@@ -1,0 +1,1908 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#faf6f0">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<title>September Manager</title>
+<style>
+  /* Brand September — ivory ấm + nâu quế terracotta.
+     Bảng series đã chạy validate_palette.js: light PASS trên #faf6f0,
+     dark PASS trên #1c1917 (CVD ≥ 15.9 / 18.1, contrast ≥ 3:1). */
+  :root {
+    --display: Georgia, "Times New Roman", serif;
+    --surface-1: #fffdf9;
+    --page: #faf6f0;
+    --text-primary: #292420;
+    --text-secondary: #5f564d;
+    --muted: #94897c;
+    --grid: #eadfd2;
+    --baseline: #cfc0ae;
+    --border: rgba(66, 50, 35, 0.12);
+    --shadow: 0 1px 3px rgba(90, 60, 30, .05), 0 10px 28px rgba(90, 60, 30, .06);
+    --series-1: #c2593a; /* terracotta — Album/Ảnh cưới + accent */
+    --series-2: #00947f; /* teal       — Ưu đãi */
+    --series-3: #a87a08; /* gold       — Feedback */
+    --series-4: #8a5fae; /* plum       — Váy & Vest */
+    --series-5: #3a7d2f; /* green      — Hậu trường */
+    --series-6: #cd4664; /* rose       — Live */
+    --seq-0: transparent;
+    --seq-1: #ecc4b4;
+    --seq-2: #d98a68;
+    --seq-3: #b14e30;
+    --seq-4: #7e3720;
+    --seq-3-ink: #ffffff;
+    --good: #2f6d28;
+    --critical: #bf3a2e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --surface-1: #1c1917;
+      --page: #121009;
+      --text-primary: #f5efe6;
+      --text-secondary: #cbc0b2;
+      --muted: #94897c;
+      --grid: #37302a;
+      --baseline: #4a4239;
+      --border: rgba(255, 244, 230, 0.12);
+      --shadow: none;
+      --series-1: #d0704c;
+      --series-2: #189a88;
+      --series-3: #bd8a1a;
+      --series-4: #a17cc9;
+      --series-5: #57994a;
+      --series-6: #d55a77;
+      --seq-1: #8a4a30;
+      --seq-2: #c66a45;
+      --seq-3: #e59a77;
+      --seq-4: #f3c9b4;
+      --seq-3-ink: #1c1917;
+      --good: #6db35c;
+      --critical: #e0654f;
+    }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page);
+    color: var(--text-primary);
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px 16px 60px; }
+
+  /* ---------- Sidebar chọn page ---------- */
+  .layout { display: flex; gap: 18px; align-items: flex-start; }
+  .main { flex: 1; min-width: 0; }
+  .sidebar { width: 205px; flex-shrink: 0; position: sticky; top: 8px; }
+  .sidebar .sblabel { font-size: 11px; letter-spacing: .8px; color: var(--muted); margin: 4px 0 8px 8px; font-weight: 700; }
+  .pageitem { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 12px;
+              cursor: pointer; border: 1px solid transparent; transition: background .15s ease, border-color .15s ease; }
+  .pageitem:hover { background: var(--surface-1); }
+  .pageitem.active { background: var(--surface-1); border-color: var(--border); box-shadow: var(--shadow); }
+  .pageitem img { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--border); flex-shrink: 0; }
+  .pageitem .pi-meta { min-width: 0; }
+  .pageitem .pi-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pageitem .pi-likes { font-size: 11px; color: var(--muted); }
+  @media (max-width: 900px) {
+    .layout { display: block; }
+    .sidebar { position: static; width: auto; display: flex; gap: 8px; overflow-x: auto;
+               padding-bottom: 6px; margin-bottom: 4px; scrollbar-width: none; }
+    .sidebar::-webkit-scrollbar { display: none; }
+    .sidebar .sblabel { display: none; }
+    .pageitem { flex-shrink: 0; padding: 5px 12px 5px 6px; border: 1px solid var(--border); border-radius: 999px; }
+    .pageitem .pi-likes { display: none; }
+    .pageitem img { width: 26px; height: 26px; }
+  }
+
+  /* ---------- Header ---------- */
+  header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  header img.avatar { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border); }
+  header .pageinfo { flex: 1; min-width: 180px; }
+  header .pageinfo h1 { font-size: 20px; font-weight: 700; font-family: var(--display); letter-spacing: .2px; }
+  header .pageinfo .sub { color: var(--text-secondary); font-size: 12.5px; }
+  .monthnav { display: flex; align-items: center; gap: 4px; }
+  .monthnav .label { font-weight: 700; font-size: 15px; min-width: 110px; text-align: center; }
+  button {
+    font-family: inherit; font-size: 13px; cursor: pointer;
+    background: var(--surface-1); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 999px; padding: 7px 14px;
+  }
+  button:hover { border-color: var(--series-1); color: var(--series-1); }
+  button.primary { background: var(--series-1); border-color: var(--series-1); color: #fff; font-weight: 600; }
+  button.primary:hover { color: #fff; filter: brightness(1.08); }
+  button.icon { width: 36px; padding: 7px 0; text-align: center; }
+  button:disabled { opacity: .5; cursor: default; }
+
+  /* ---------- Cards / layout ---------- */
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border);
+    border-radius: 16px; padding: 18px; margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 12px; font-family: var(--display); }
+  .card h2 .hint { font-weight: 400; color: var(--muted); font-size: 12px; }
+
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .tile .k { color: var(--text-secondary); font-size: 12px; margin-bottom: 2px; }
+  .tile .v { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  .tile .d { font-size: 12px; color: var(--muted); }
+  .tile .d.up { color: var(--good); }
+
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+
+  /* ---------- Calendar heatmap ---------- */
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal .dow { text-align: center; color: var(--muted); font-size: 11px; padding-bottom: 2px; }
+  .cal .day {
+    position: relative; aspect-ratio: 1.25; border-radius: 6px;
+    border: 1px solid var(--grid); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; font-size: 12px;
+    color: var(--text-secondary); cursor: default;
+  }
+  .cal .day.blank { border: none; }
+  .cal .day.today { outline: 2px solid var(--series-1); outline-offset: 1px; }
+  .cal .day .n { font-variant-numeric: tabular-nums; }
+  .cal .day.l1 { background: var(--seq-1); }
+  .cal .day.l2 { background: var(--seq-2); }
+  .cal .day.l3 { background: var(--seq-3); color: var(--seq-3-ink); }
+  .cal .day.l3 .n { color: var(--seq-3-ink); }
+  .cal .day .dots { display: flex; gap: 3px; height: 6px; margin-top: 1px; }
+  .cal .day .dot { width: 5px; height: 5px; border-radius: 50%; }
+  .dot.story { background: var(--series-5); }
+  .dot.live { background: var(--series-6); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; color: var(--text-secondary); font-size: 12px; align-items: center; }
+  .legend .item { display: flex; align-items: center; gap: 5px; }
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--grid); }
+
+  /* ---------- Content-type bars ---------- */
+  .cbar { margin-bottom: 10px; }
+  .cbar .row1 { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 3px; }
+  .cbar .row1 .name { display: flex; align-items: center; gap: 6px; color: var(--text-primary); }
+  .cbar .row1 .sw { width: 10px; height: 10px; border-radius: 3px; }
+  .cbar .row1 .val { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .cbar .track { height: 8px; background: var(--page); border-radius: 4px; overflow: hidden; }
+  .cbar .fill { height: 100%; border-radius: 4px; min-width: 2px; }
+
+  /* ---------- Table ---------- */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; font-size: 11.5px;
+       text-transform: uppercase; letter-spacing: .4px; padding: 6px 8px;
+       border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  th.sortable { cursor: pointer; }
+  td { padding: 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td .excerpt { color: var(--text-primary); display: -webkit-box; -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical; overflow: hidden; max-width: 420px; }
+  td .meta { color: var(--muted); font-size: 12px; }
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px;
+           padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border);
+           color: var(--text-secondary); white-space: nowrap; }
+  .badge .sw { width: 8px; height: 8px; border-radius: 50%; }
+  a { color: var(--series-1); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .tablewrap { overflow-x: auto; }
+
+  /* ---------- Tabs & quảng cáo ---------- */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--grid); }
+  .tabs button { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+                 padding: 8px 14px; font-size: 14px; font-weight: 600; color: var(--muted); }
+  .tabs button:hover { border-bottom-color: var(--baseline); }
+  .tabs button.active { color: var(--text-primary); border-bottom-color: var(--series-1); }
+  select { font-family: inherit; font-size: 13px; background: var(--surface-1); color: var(--text-primary);
+           border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; max-width: 100%; }
+  .bars { display: flex; align-items: flex-end; gap: 2px; height: 120px; }
+  .bars .b { flex: 1; background: var(--series-1); border-radius: 3px 3px 0 0; min-height: 2px; }
+  .bars .b.zero { background: var(--grid); }
+  .bars .b:hover { background: var(--seq-2); }
+  .barlabels { display: flex; gap: 2px; margin-top: 4px; }
+  .barlabels span { flex: 1; text-align: center; font-size: 9px; color: var(--muted); overflow: hidden; }
+  .stt { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; font-size: 12.5px; color: var(--text-secondary); }
+  .stt .dt { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .stt.on .dt { background: var(--good); }
+  .stt.on { color: var(--text-primary); }
+
+  /* ---------- Tab Xu hướng ---------- */
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: none; border-radius: 0; padding: 6px 14px; background: var(--surface-1); color: var(--muted); font-weight: 600; }
+  .seg button.active { background: var(--series-1); color: #fff; }
+  .vchart { display: flex; gap: 6px; align-items: flex-end; margin-top: 6px; }
+  .vchart .col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; }
+  .vchart .val { font-size: 10.5px; color: var(--text-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .vchart .bar { width: 100%; max-width: 48px; border-radius: 4px 4px 0 0; background: var(--series-1); }
+  .vchart .bar.none { background: var(--grid); }
+  .vchart .lbl { font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+
+  /* ---------- Bảng KPI ---------- */
+  .kpi-row { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--grid); flex-wrap: wrap; }
+  .kpi-row:last-child { border-bottom: none; }
+  .kpi-name { width: 150px; font-weight: 600; font-size: 13px; flex-shrink: 0;
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi-metric { flex: 1; min-width: 125px; }
+  .kpi-metric .lbl { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 3px; }
+  .kpi-metric .lbl b { font-variant-numeric: tabular-nums; }
+  .kpi-bar { height: 7px; background: var(--page); border-radius: 4px; overflow: hidden; }
+  .kpi-bar .fill { height: 100%; border-radius: 4px; }
+  .kpi-status { width: 88px; text-align: right; font-size: 12px; flex-shrink: 0; white-space: nowrap; }
+  .kpi-edit input { width: 58px; padding: 5px 8px; font-size: 13px; }
+  .kpi-edit .kpi-metric { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+  @media (max-width: 560px) { .kpi-name { width: 100%; } .kpi-status { width: auto; } }
+
+  /* ---------- Motion ---------- */
+  @media (prefers-reduced-motion: no-preference) {
+    .card, .tile { animation: rise .45s cubic-bezier(.22, .9, .32, 1) both; }
+    .bars .b, .vchart .bar, .cbar .fill { transform-origin: bottom; animation: grow .55s cubic-bezier(.22, .9, .32, 1) both; }
+    .cbar .fill { transform-origin: left; animation-name: growX; }
+    .cal .day { animation: pop .3s ease-out both; }
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
+  @keyframes grow { from { transform: scaleY(0); } }
+  @keyframes growX { from { transform: scaleX(0); } }
+  @keyframes pop { from { opacity: 0; transform: scale(.85); } }
+  button { transition: transform .15s ease, border-color .15s ease, opacity .15s ease; }
+  button:active { transform: scale(.94); }
+  .tabs button { transition: color .2s ease, border-color .2s ease; }
+  .cal .day { transition: transform .15s ease; }
+  .cal .day:not(.blank):hover { transform: scale(1.1); z-index: 1; }
+  tbody tr { transition: background .15s ease; }
+  tbody tr:hover { background: rgba(128, 128, 128, .07); }
+  .bars .b, .vchart .bar { transition: filter .15s ease; }
+  .bars .b:hover, .vchart .col:hover .bar { filter: brightness(1.25); }
+  .pagecard { transition: transform .15s ease, border-color .15s ease; }
+  .pagecard:hover { transform: translateX(3px); }
+
+  /* ---------- Mobile ---------- */
+  .tabs { position: sticky; top: 0; z-index: 20; padding-top: 4px;
+          background: var(--page); }
+  @supports (backdrop-filter: blur(10px)) {
+    .tabs { background: color-mix(in srgb, var(--page) 82%, transparent); backdrop-filter: blur(12px); }
+  }
+  .tabs { overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tabs button { white-space: nowrap; flex-shrink: 0; }
+  @media (max-width: 560px) {
+    .wrap { padding: 12px 10px 48px; }
+    header { gap: 8px; }
+    header .pageinfo h1 { font-size: 16px; }
+    header img.avatar { width: 38px; height: 38px; }
+    .monthnav .label { min-width: 96px; font-size: 14px; }
+    .tiles { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .tile { padding: 12px; }
+    .tile .v { font-size: 22px; }
+    .card { padding: 12px; border-radius: 10px; }
+    .toolbar button { padding: 7px 10px; font-size: 12.5px; }
+  }
+
+  /* ---------- Setup / states ---------- */
+  .notice { border: 1px solid var(--border); border-left: 3px solid var(--series-3);
+            border-radius: 8px; padding: 10px 12px; color: var(--text-secondary);
+            font-size: 13px; margin-bottom: 12px; background: var(--surface-1); }
+  .notice.err { border-left-color: var(--critical); }
+  input[type=text], input[type=password], textarea {
+    font-family: inherit; font-size: 13px; width: 100%;
+    background: var(--page); color: var(--text-primary);
+    border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
+  }
+  .setup ol { margin: 8px 0 14px 20px; color: var(--text-secondary); list-style: decimal; }
+  .setup li { margin-bottom: 4px; }
+  .pagelist { display: grid; gap: 8px; margin-top: 12px; }
+  .pagecard { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border);
+              border-radius: 10px; padding: 10px 12px; cursor: pointer; background: var(--surface-1); }
+  .pagecard:hover { border-color: var(--series-1); }
+  .pagecard img { width: 36px; height: 36px; border-radius: 50%; }
+  .pagecard .nm { font-weight: 600; }
+  .pagecard .ct { color: var(--muted); font-size: 12px; }
+  .loading { text-align: center; color: var(--muted); padding: 40px 0; }
+  .spin { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--grid);
+          border-top-color: var(--series-1); border-radius: 50%;
+          animation: spin .8s linear infinite; vertical-align: -4px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .updated { color: var(--muted); font-size: 12px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .empty { color: var(--muted); padding: 16px 0; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+"use strict";
+const GRAPH = "https://graph.facebook.com/v23.0";
+const LS = {
+  userToken: "fp_user_token",
+  pages: "fp_pages",
+  selected: "fp_selected_page",
+  cachePrefix: "fp_cache_",
+  adAccounts: "fp_ad_accounts",
+  adSelected: "fp_ad_selected",
+  adCachePrefix: "fp_adcache_",
+  fieldsTier: "fp_fields_tier",
+  tokenAt: "fp_token_saved_at",
+  adsToken: "fp_ads_token", // token riêng cho ads khi tài khoản QC nằm ở BM khác
+  tokenPermanent: "fp_token_permanent", // user xác nhận token chính là System User vĩnh viễn
+};
+let livesDisabled = false; // token không đọc được live_videos — khỏi gọi lại trong session
+const MSG_ACTION = "onsite_conversion.messaging_conversation_started_7d";
+
+/* ---------- Phân loại nội dung (từ khóa, ưu tiên từ trên xuống) ---------- */
+const CATEGORIES = [
+  { key: "live",     name: "Livestream",          color: "var(--series-6)", kw: [] },
+  { key: "uudai",    name: "Ưu đãi / Khuyến mãi", color: "var(--series-2)", kw: [] }, // xử lý riêng trong classify()
+  { key: "feedback", name: "Feedback khách",      color: "var(--series-3)",
+    kw: ["feedback","review","cảm ơn","tin tưởng","chốt đơn"] },
+  { key: "vayvest",  name: "Váy & Vest",          color: "var(--series-4)",
+    kw: ["váy cưới","vest","soiree","soirée","áo dài","váy mới"] },
+  { key: "bts",      name: "Hậu trường",          color: "var(--series-5)",
+    kw: ["hậu trường","behind the scene","một ngày làm việc"] },
+  { key: "album",    name: "Album / Ảnh cưới",    color: "var(--series-1)",
+    kw: ["album","ảnh cưới","prewedding","pre-wedding","pre wedding","ngoại cảnh","phim trường",
+         "concept","bộ ảnh","groom","bride","dâu rể","chụp ảnh","chupanhcuoi","wedding"] },
+  { key: "khac",     name: "Khác",                color: "var(--muted)", kw: [] },
+];
+// Từ khóa ưu đãi "mạnh" — footer bài nào cũng có hotline/đặt lịch nên
+// chỉ tính ưu đãi khi từ khóa nằm ở phần mở đầu, hoặc là từ rất đặc trưng
+const PROMO_KW = ["ưu đãi","khuyến mãi","giảm giá","sale","voucher","quà tặng","tặng ngay","combo","chỉ từ"];
+// Match theo ranh giới từ để "vest" không ăn vào "#lovestory"
+function kwMatch(text, k) {
+  const esc = k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp("(^|[^\\p{L}])" + esc + "($|[^\\p{L}])", "u").test(text);
+}
+function classify(post) {
+  if (post.status_type === "added_video" && post.isLive) return "live";
+  // NFKC đưa chữ kiểu 𝙂𝙧𝙤𝙤𝙢/𝗕𝗿𝗶𝗱𝗲 về ASCII thường;
+  // cắt footer boilerplate (sau dòng gạch ngang) để khỏi nhiễu
+  const full = (post.message || "").normalize("NFKC").toLowerCase();
+  const body = full.split(/\n\s*-{6,}/)[0];
+  const head = body.slice(0, 120);
+  if (PROMO_KW.some(k => kwMatch(head, k))) return "uudai";
+  for (const c of CATEGORIES) {
+    if (c.kw.length && c.kw.some(k => kwMatch(body, k))) return c.key;
+  }
+  if (PROMO_KW.some(k => kwMatch(body, k))) return "uudai";
+  return "khac";
+}
+function catOf(key) { return CATEGORIES.find(c => c.key === key) || CATEGORIES[CATEGORIES.length - 1]; }
+
+/* ---------- Vai trò thiết bị (admin / nhân viên) ----------
+   Mở app kèm ?staff=1 → thiết bị này là máy nhân viên: khóa tab Quảng cáo.
+   Mở kèm ?staff=0 → trả về admin. Khóa này là lớp giao diện; lớp bảo mật
+   thật là token: máy nhân viên dùng token riêng không có quyền ads. */
+{
+  const qs = new URLSearchParams(location.search);
+  if (qs.get("staff") === "1") localStorage.setItem("fp_role", JSON.stringify("staff"));
+  if (qs.get("staff") === "0") localStorage.removeItem("fp_role");
+}
+function isStaff() { return load("fp_role") === "staff"; }
+
+/* ---------- State ---------- */
+let state = {
+  view: "loading",          // setup | dashboard | loading
+  tab: "page",              // page | ads
+  month: startOfMonth(new Date()),
+  page: load(LS.selected),  // {id, name, access_token, picture}
+  data: null,               // {posts, stories, storiesError, lives, insightsOk, fetchedAt}
+  prevData: null,           // dữ liệu tháng trước để so sánh
+  dataMonth: null,          // tháng (ymKey) mà data đang giữ
+  adAccounts: load(LS.adAccounts) || [],
+  adAccount: load(LS.adSelected),
+  adsData: null, prevAdsData: null, adsMonth: null,
+  adsError: null, adsLoading: false,
+  trendData: null, trendLoading: false, trendError: null, trendMode: "month",
+  inboxData: null, inboxLoading: false, inboxError: null, inboxMonth: null,
+  sortBy: "time",
+  error: null,
+  setupMsg: null,
+  foundPages: null,
+};
+
+function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
+function save(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+function ymKey(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0"); }
+function fmtNum(n) { return n == null ? "—" : n.toLocaleString("vi-VN"); }
+function fmtMoney(n) { return n == null ? "—" : Math.round(n).toLocaleString("vi-VN") + " ₫"; }
+function isoDay(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function fmtCompact(n) {
+  if (n == null) return "—";
+  if (n >= 1e9) return (n / 1e9).toLocaleString("vi-VN", { maximumFractionDigits: 1 }) + " tỷ";
+  if (n >= 1e6) return (n / 1e6).toLocaleString("vi-VN", { maximumFractionDigits: 1 }) + "tr";
+  if (n >= 1e3) return Math.round(n / 1e3).toLocaleString("vi-VN") + "k";
+  return String(Math.round(n));
+}
+function actVal(actions, type) {
+  const a = (actions || []).find(x => x.action_type === type);
+  return a ? +a.value : 0;
+}
+// Lead có thể về dưới action_type "lead" hoặc "onsite_conversion.lead" tùy loại chiến dịch
+function leadVal(actions) {
+  return actVal(actions, "lead") || actVal(actions, "onsite_conversion.lead");
+}
+// Graph API lúc trả ISO string, lúc trả epoch giây (vd stories.creation_time)
+function parseFbTime(t) {
+  if (t == null) return new Date(NaN);
+  if (/^\d+$/.test(String(t))) return new Date(+t * 1000);
+  return new Date(t);
+}
+function fmtDate(iso) {
+  const d = parseFbTime(iso);
+  return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" }) + " " +
+         d.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
+}
+function esc(s) { return (s || "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])); }
+function monthLabel(d) { return "Tháng " + (d.getMonth() + 1) + "/" + d.getFullYear(); }
+
+/* ---------- Graph API ---------- */
+async function gfetch(path, params) {
+  const url = new URL(GRAPH + path);
+  for (const [k, v] of Object.entries(params || {})) url.searchParams.set(k, v);
+  const res = await fetch(url);
+  const json = await res.json();
+  if (json.error) { const e = new Error(json.error.message); e.fb = json.error; throw e; }
+  return json;
+}
+async function gfetchAll(path, params, maxPages = 10) {
+  let out = [], url = null, page = 0;
+  let json = await gfetch(path, params);
+  while (true) {
+    out = out.concat(json.data || []);
+    url = json.paging && json.paging.next;
+    if (!url || ++page >= maxPages) break;
+    const res = await fetch(url);
+    json = await res.json();
+    if (json.error) break;
+  }
+  return out;
+}
+
+// Stories chỉ tải 1 lần mỗi session cho mỗi page — các tháng dùng chung
+let storiesMemo = { pageId: null, promise: null };
+function fetchAllStories(page) {
+  if (storiesMemo.pageId !== page.id || !storiesMemo.promise) {
+    storiesMemo = {
+      pageId: page.id,
+      promise: gfetchAll(`/${page.id}/stories`,
+        { fields: "post_id,status,creation_time,media_type,url", limit: 25, access_token: page.access_token }, 8)
+        .catch(e => { storiesMemo.promise = null; throw e; }),
+    };
+  }
+  return storiesMemo.promise;
+}
+function clearStoriesMemo() { storiesMemo = { pageId: null, promise: null }; }
+
+async function fetchMonthData(page, month, { force = false, skipStories = false } = {}) {
+  const cacheKey = LS.cachePrefix + page.id + "_" + ymKey(month);
+  if (!force) {
+    const cached = load(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < 30 * 60 * 1000) return cached;
+  }
+  const since = Math.floor(month.getTime() / 1000);
+  const until = Math.floor(addMonths(month, 1).getTime() / 1000);
+  const token = page.access_token;
+
+  // 1) Bài viết đã đăng — fallback 3 tầng theo quyền của token:
+  //    đủ quyền → kèm insights; thiếu read_insights → kèm tương tác;
+  //    thiếu pages_read_user_content → chỉ nội dung + chia sẻ.
+  //    Tầng dùng được lần trước được nhớ lại để khỏi thử lại các tầng hỏng.
+  const baseFields = "id,message,story,created_time,permalink_url,status_type," +
+    "attachments{media_type,type},shares";
+  const engFields = baseFields + ",comments.summary(true).limit(0),reactions.summary(true).limit(0)";
+  const insFields = engFields + ",insights.metric(post_impressions_unique,post_impressions){name,values}";
+  const tiers = [insFields, engFields, baseFields];
+  let startTier = load(LS.fieldsTier);
+  // Chú ý: null >= 0 là true trong JS — phải kiểm tra Number.isInteger
+  if (!Number.isInteger(startTier) || startTier < 0 || startTier > 2) startTier = 0;
+  let posts = null, usedTier = startTier;
+  for (let t = startTier; t < tiers.length; t++) {
+    try {
+      posts = await gfetchAll(`/${page.id}/published_posts`,
+        { fields: tiers[t], since, until, limit: 100, access_token: token });
+      usedTier = t;
+      break;
+    } catch (e) {
+      if (t === tiers.length - 1) throw e;
+    }
+  }
+  save(LS.fieldsTier, usedTier);
+  const insightsOk = usedTier === 0, engagementOk = usedTier <= 1;
+
+  // 2) Live videos (lọc theo tháng phía client; nhớ trạng thái không có quyền)
+  let lives = [];
+  if (!livesDisabled) {
+    try {
+      const all = await gfetchAll(`/${page.id}/live_videos`,
+        { fields: "id,title,description,status,creation_time,broadcast_start_time,permalink_url", limit: 50, access_token: token }, 4);
+      lives = all.filter(v => {
+        const t = new Date(v.broadcast_start_time || v.creation_time).getTime() / 1000;
+        return t >= since && t < until;
+      });
+    } catch (e) { livesDisabled = true; /* token không có quyền live — bỏ qua từ giờ */ }
+  }
+
+  // 3) Stories (cần quyền pages_manage_posts; nếu lỗi thì báo)
+  let stories = [], storiesError = null;
+  if (!skipStories) {
+    try {
+      const all = await fetchAllStories(page);
+      stories = all.filter(s => {
+        const t = parseFbTime(s.creation_time).getTime() / 1000;
+        return t >= since && t < until;
+      });
+    } catch (e) { storiesError = e.message; }
+  }
+
+  // Chuẩn hóa
+  const liveIds = new Set(lives.map(v => v.id));
+  const normPosts = posts.map(p => {
+    let reach = null, impressions = null;
+    if (p.insights && p.insights.data) {
+      for (const m of p.insights.data) {
+        const v = m.values && m.values[0] && m.values[0].value;
+        if (m.name === "post_impressions_unique") reach = v;
+        if (m.name === "post_impressions") impressions = v;
+      }
+    }
+    const mediaType = p.attachments && p.attachments.data && p.attachments.data[0]
+      ? (p.attachments.data[0].media_type || p.attachments.data[0].type) : null;
+    const isLive = p.status_type === "added_video" &&
+      [...liveIds].some(id => (p.id || "").includes(id));
+    const post = {
+      id: p.id, message: p.message || p.story || "", created_time: p.created_time,
+      permalink_url: p.permalink_url, status_type: p.status_type, mediaType,
+      reach, impressions, isLive,
+      reactions: p.reactions?.summary?.total_count ?? 0,
+      comments: p.comments?.summary?.total_count ?? 0,
+      shares: p.shares?.count ?? 0,
+    };
+    post.category = classify(post);
+    return post;
+  });
+
+  const data = { posts: normPosts, lives, stories, storiesError, insightsOk, engagementOk, fetchedAt: Date.now() };
+  // Dữ liệu skipStories thiếu story — không ghi đè cache đầy đủ
+  if (!skipStories) { try { save(cacheKey, data); } catch { /* localStorage đầy — bỏ qua cache */ } }
+  return data;
+}
+
+/* ---------- Dữ liệu quảng cáo (Marketing API) ---------- */
+async function fetchAdsMonthData(acct, month, { force = false } = {}) {
+  const cacheKey = LS.adCachePrefix + acct.id + "_" + ymKey(month);
+  if (!force) {
+    const cached = load(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < 30 * 60 * 1000) return cached;
+  }
+  const token = load(LS.adsToken) || load(LS.userToken);
+  if (!token) { const e = new Error("Chưa có token — bấm 'Đổi page / token' và kết nối lại với quyền ads_read."); throw e; }
+  const lastDay = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const base = {
+    time_range: JSON.stringify({ since: isoDay(month), until: isoDay(lastDay) }),
+    access_token: token,
+  };
+  const [sumRes, dailyRes, campRows, campMeta] = await Promise.all([
+    gfetch(`/${acct.id}/insights`, { ...base, fields: "spend,impressions,reach,clicks,cpm,actions" }),
+    gfetch(`/${acct.id}/insights`, { ...base, fields: "spend,actions", time_increment: 1, limit: 31 }),
+    gfetchAll(`/${acct.id}/insights`, { ...base, level: "campaign",
+      fields: "campaign_id,campaign_name,spend,impressions,reach,actions", limit: 100 }),
+    gfetchAll(`/${acct.id}/campaigns`,
+      { fields: "id,name,effective_status,daily_budget", limit: 100, access_token: token }, 3).catch(() => []),
+  ]);
+  const metaById = {};
+  for (const c of campMeta) metaById[c.id] = c;
+  const data = {
+    summary: (sumRes.data && sumRes.data[0]) || null,
+    daily: dailyRes.data || [],
+    campaigns: campRows.map(c => ({ ...c, meta: metaById[c.campaign_id] || null })),
+    fetchedAt: Date.now(),
+  };
+  try { save(cacheKey, data); } catch { /* localStorage đầy — bỏ qua cache */ }
+  return data;
+}
+function adTotals(d) {
+  const s = (d && d.summary) || {};
+  const spend = +s.spend || 0;
+  const msgs = actVal(s.actions, MSG_ACTION);
+  const leads = leadVal(s.actions);
+  const kq = msgs + leads;
+  return { spend, msgs, leads, kq,
+           costPerKq: kq ? spend / kq : null,
+           reach: +s.reach || 0, cpm: +s.cpm || null };
+}
+async function loadAds(force = false) {
+  if (!state.adAccount) { render(); return; }
+  state.adsLoading = true; state.adsError = null; render();
+  try {
+    const [cur, prev] = await Promise.all([
+      fetchAdsMonthData(state.adAccount, state.month, { force }),
+      fetchAdsMonthData(state.adAccount, addMonths(state.month, -1)).catch(() => null),
+    ]);
+    state.adsData = cur; state.prevAdsData = prev; state.adsMonth = ymKey(state.month);
+  } catch (e) {
+    state.adsError = e; state.adsData = null;
+  }
+  state.adsLoading = false; render();
+}
+
+/* ---------- Dữ liệu hộp thư Messenger ---------- */
+function fmtDur(ms) {
+  if (ms == null) return "—";
+  const m = ms / 60000;
+  if (m < 60) return Math.max(1, Math.round(m)) + " phút";
+  const h = m / 60;
+  if (h < 24) return (Math.round(h * 10) / 10).toLocaleString("vi-VN") + " giờ";
+  return (Math.round(h / 24 * 10) / 10).toLocaleString("vi-VN") + " ngày";
+}
+async function fetchInboxData(page, month, { force = false } = {}) {
+  const cacheKey = "fp_inbox_" + page.id + "_" + ymKey(month);
+  if (!force) {
+    const c = load(cacheKey);
+    if (c && Date.now() - c.fetchedAt < 15 * 60 * 1000) return c;
+  }
+  const start = month.getTime(), end = addMonths(month, 1).getTime();
+  // Hội thoại sắp theo updated_time giảm dần — dừng sớm khi đã cũ hơn đầu tháng
+  let convs = [], pages = 0, partial = false;
+  let json = await gfetch(`/${page.id}/conversations`, {
+    fields: "id,link,updated_time,message_count,unread_count,participants," +
+            "messages.limit(25){created_time,from}",
+    limit: 25, access_token: page.access_token,
+  });
+  while (true) {
+    convs = convs.concat(json.data || []);
+    const oldest = convs[convs.length - 1];
+    if (oldest && new Date(oldest.updated_time).getTime() < start) break;
+    if (!json.paging || !json.paging.next) break;
+    if (++pages >= 8) { partial = true; break; }
+    const res = await fetch(json.paging.next);
+    json = await res.json();
+    if (json.error) break;
+  }
+
+  const inMonth = t => t >= start && t < end;
+  let convActive = 0, convNew = 0, msgsIn = 0, msgsOut = 0;
+  const deltas = [], awaiting = [];
+  for (const c of convs) {
+    const raw = (c.messages && c.messages.data || []).slice().reverse(); // cũ → mới
+    const msgs = raw.map(m => ({
+      t: parseFbTime(m.created_time).getTime(),
+      fromPage: !!(m.from && m.from.id === page.id),
+    }));
+    if (!msgs.length) continue;
+    const userName = ((c.participants && c.participants.data || []).find(p => p.id !== page.id) || {}).name || "Khách";
+    if (msgs.some(m => inMonth(m.t))) convActive++;
+    // "Mới": có đủ toàn bộ lịch sử (≤25 tin) và tin đầu tiên nằm trong tháng
+    if (c.message_count <= 25 && inMonth(msgs[0].t)) convNew++;
+    for (const m of msgs) if (inMonth(m.t)) (m.fromPage ? msgsOut++ : msgsIn++);
+    // Thời gian phản hồi: từ tin ĐẦU TIÊN của khách trong một loạt → tin trả lời của page
+    let blockStart = null;
+    for (const m of msgs) {
+      if (!m.fromPage) { if (blockStart == null) blockStart = m.t; }
+      else if (blockStart != null) {
+        if (inMonth(m.t)) deltas.push(m.t - blockStart);
+        blockStart = null;
+      }
+    }
+    // Đang chờ: tin cuối cùng là của khách
+    const last = msgs[msgs.length - 1];
+    if (!last.fromPage) awaiting.push({ name: userName, since: last.t, link: c.link, unread: c.unread_count || 0 });
+  }
+  awaiting.sort((a, b) => a.since - b.since); // chờ lâu nhất lên đầu
+  const sorted = [...deltas].sort((a, b) => a - b);
+  const avgResp = deltas.length ? deltas.reduce((a, b) => a + b, 0) / deltas.length : null;
+  const medResp = deltas.length ? sorted[Math.floor(sorted.length / 2)] : null;
+  const buckets = [
+    { label: "<15p", max: 15 * 60e3, n: 0 },
+    { label: "15–60p", max: 60 * 60e3, n: 0 },
+    { label: "1–4h", max: 4 * 3600e3, n: 0 },
+    { label: "4–24h", max: 24 * 3600e3, n: 0 },
+    { label: ">24h", max: Infinity, n: 0 },
+  ];
+  for (const d of deltas) buckets.find(b => d < b.max).n++;
+  const data = {
+    convActive, convNew, msgsIn, msgsOut,
+    avgResp, medResp, respCount: deltas.length, buckets,
+    awaiting: awaiting.slice(0, 30),
+    scanned: convs.length, partial,
+    fetchedAt: Date.now(),
+  };
+  try { save(cacheKey, data); } catch { /* bỏ qua */ }
+  return data;
+}
+async function loadInbox(force = false) {
+  state.inboxLoading = true; state.inboxError = null; render();
+  try {
+    state.inboxData = await fetchInboxData(state.page, state.month, { force });
+    state.inboxMonth = ymKey(state.month);
+  } catch (e) { state.inboxError = e; state.inboxData = null; }
+  state.inboxLoading = false; render();
+}
+
+/* ---------- Dữ liệu xu hướng (6 tháng / 8 tuần) ---------- */
+const TREND_MONTHS = 6, TREND_WEEKS = 8;
+async function loadTrends(force = false) {
+  state.trendLoading = true; state.trendError = null; render();
+  try {
+    if (force) clearStoriesMemo();
+    const months = [];
+    for (let i = TREND_MONTHS - 1; i >= 0; i--) months.push(addMonths(startOfMonth(new Date()), -i));
+    // Story tải 1 lần cho cả dải; từng tháng chỉ tải bài viết (skipStories)
+    const [pageRes, adsRes, storiesAll] = await Promise.all([
+      Promise.all(months.map(m => fetchMonthData(state.page, m, { force, skipStories: true }).catch(() => null))),
+      Promise.all(months.map(m => state.adAccount
+        ? fetchAdsMonthData(state.adAccount, m, { force }).catch(() => null)
+        : Promise.resolve(null))),
+      fetchAllStories(state.page).catch(() => null),
+    ]);
+    const storiesInMonth = m => {
+      if (!storiesAll) return null;
+      const s0 = m.getTime(), s1 = addMonths(m, 1).getTime();
+      return storiesAll.filter(s => {
+        const t = parseFbTime(s.creation_time).getTime();
+        return t >= s0 && t < s1;
+      }).length;
+    };
+    state.trendData = {
+      months: months.map((m, i) => {
+        const pd = pageRes[i];
+        const t = adsRes[i] ? adTotals(adsRes[i]) : null;
+        return {
+          label: "T" + (m.getMonth() + 1) + (m.getMonth() === 0 || i === 0 ? "/" + String(m.getFullYear()).slice(2) : ""),
+          posts: pd ? pd.posts.length : null,
+          reach: pd ? sumReach(pd.posts) : null,
+          stories: storiesInMonth(m),
+          spend: t ? t.spend : null,
+          kq: t ? t.kq : null,
+          costPerKq: t ? t.costPerKq : null,
+        };
+      }),
+      weeks: buildWeeks(pageRes, adsRes, storiesAll),
+      fetchedAt: Date.now(),
+    };
+  } catch (e) { state.trendError = e; }
+  state.trendLoading = false; render();
+}
+function buildWeeks(pageRes, adsRes, storiesAll) {
+  const allPosts = pageRes.filter(Boolean).flatMap(d => d.posts);
+  const allDaily = adsRes.filter(Boolean).flatMap(d => d.daily);
+  const hasAds = adsRes.some(Boolean);
+  const now = new Date();
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
+  const weeks = [];
+  for (let i = TREND_WEEKS - 1; i >= 0; i--) {
+    const start = new Date(monday); start.setDate(monday.getDate() - i * 7);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    const posts = allPosts.filter(p => { const t = new Date(p.created_time); return t >= start && t < end; });
+    const daily = allDaily.filter(r => { const t = new Date(r.date_start + "T00:00:00"); return t >= start && t < end; });
+    const spend = hasAds ? daily.reduce((s, r) => s + (+r.spend || 0), 0) : null;
+    const kq = hasAds ? daily.reduce((s, r) => s + actVal(r.actions, MSG_ACTION) + leadVal(r.actions), 0) : null;
+    const stories = storiesAll
+      ? storiesAll.filter(s => { const t = parseFbTime(s.creation_time); return t >= start && t < end; }).length
+      : null;
+    weeks.push({
+      label: start.getDate() + "/" + (start.getMonth() + 1),
+      posts: posts.length, reach: sumReach(posts), stories,
+      spend, kq, costPerKq: kq ? spend / kq : null,
+    });
+  }
+  return weeks;
+}
+
+/* ---------- Actions ---------- */
+async function connectWithUserToken(token) {
+  state.setupMsg = null; state.foundPages = null; render();
+  try {
+    const res = await gfetch("/me/accounts",
+      { fields: "id,name,access_token,category,picture{url},fan_count", limit: 100, access_token: token });
+    if (!res.data || !res.data.length) {
+      state.setupMsg = { type: "err", text: "Token hợp lệ nhưng không tìm thấy Page nào. Kiểm tra lại quyền pages_show_list." };
+    } else {
+      save(LS.userToken, token);
+      save(LS.tokenAt, Date.now());
+      // Token mới có thể nhiều quyền hơn token cũ — quên mức quyền đã nhớ
+      // và cache bài viết cũ để dò lại từ mức cao nhất
+      localStorage.removeItem(LS.fieldsTier);
+      localStorage.removeItem(LS.tokenPermanent); // token mới chưa chắc vĩnh viễn
+      for (const k of Object.keys(localStorage)) if (k.startsWith(LS.cachePrefix)) localStorage.removeItem(k);
+      state.foundPages = res.data;
+      // Lưu danh sách page để đổi qua lại không cần dán lại token
+      save(LS.pages, res.data.map(p => ({
+        id: p.id, name: p.name, access_token: p.access_token,
+        picture: p.picture && p.picture.data && p.picture.data.url,
+        fan_count: p.fan_count, category: p.category,
+      })));
+      // Lấy luôn danh sách tài khoản quảng cáo (cần quyền ads_read);
+      // ưu tiên token QC riêng nếu có
+      try {
+        const ad = await gfetch("/me/adaccounts",
+          { fields: "id,name,account_status,currency,amount_spent", limit: 100,
+            access_token: load(LS.adsToken) || token });
+        // Active trước, trong nhóm active thì tài khoản tiêu nhiều nhất lên đầu
+        state.adAccounts = (ad.data || []).sort((a, b) =>
+          (a.account_status === 1 ? 0 : 1) - (b.account_status === 1 ? 0 : 1) ||
+          (+b.amount_spent || 0) - (+a.amount_spent || 0));
+        save(LS.adAccounts, state.adAccounts);
+      } catch (e) {
+        state.adAccounts = [];
+        save(LS.adAccounts, []);
+      }
+    }
+  } catch (e) {
+    state.setupMsg = { type: "err", text: "Lỗi: " + e.message };
+  }
+  render();
+}
+function selectPage(p) {
+  state.page = { id: p.id, name: p.name, access_token: p.access_token,
+                 picture: p.picture?.data?.url, fan_count: p.fan_count, category: p.category };
+  save(LS.selected, state.page);
+  state.foundPages = null;
+  // Mặc định chọn tài khoản QC đang active đầu tiên
+  if (!state.adAccount && state.adAccounts.length) {
+    state.adAccount = state.adAccounts.find(a => a.account_status === 1) || state.adAccounts[0];
+    save(LS.adSelected, state.adAccount);
+  }
+  loadDashboard();
+}
+async function loadDashboard(force = false) {
+  state.view = "loading"; state.error = null; render();
+  if (force) clearStoriesMemo();
+  try {
+    const [cur, prev] = await Promise.all([
+      fetchMonthData(state.page, state.month, { force }),
+      fetchMonthData(state.page, addMonths(state.month, -1), { force: false }).catch(() => null),
+    ]);
+    state.data = cur; state.prevData = prev; state.view = "dashboard";
+    state.dataMonth = ymKey(state.month);
+    seedKpis();
+    loadKpiBoard(); // nạp nền số liệu các page khác cho bảng KPI
+  } catch (e) {
+    state.error = e; state.view = "dashboard"; state.data = null;
+    if (e.fb && (e.fb.code === 190)) {
+      // token hết hạn
+      state.view = "setup";
+      state.setupMsg = { type: "err", text: "Token đã hết hạn hoặc bị thu hồi — vui lòng lấy token mới và kết nối lại." };
+    }
+  }
+  render();
+}
+function changeMonth(n) {
+  if (state.tab === "trend") return; // tab Xu hướng luôn là 6 tháng gần nhất
+  const next = addMonths(state.month, n);
+  if (next > startOfMonth(new Date())) return;
+  state.month = next;
+  if (state.tab === "ads") loadAds();
+  else if (state.tab === "inbox") loadInbox();
+  else loadDashboard();
+}
+function setTab(t) {
+  if (state.tab === t) return;
+  state.tab = t;
+  if (t === "ads") {
+    if (isStaff()) { render(); return; }
+    if (state.adAccount && state.adsMonth !== ymKey(state.month)) { loadAds(); return; }
+  } else if (t === "inbox") {
+    if (state.inboxMonth !== ymKey(state.month) && !state.inboxLoading) { loadInbox(); return; }
+  } else if (t === "trend") {
+    if (!state.trendData && !state.trendLoading) { loadTrends(); return; }
+  } else {
+    if (state.page && state.dataMonth !== ymKey(state.month)) { loadDashboard(); return; }
+  }
+  render();
+}
+function disconnect() {
+  localStorage.removeItem(LS.selected);
+  localStorage.removeItem(LS.adSelected);
+  localStorage.removeItem(LS.pages);
+  state.page = null; state.data = null; state.dataMonth = null;
+  state.adAccount = null; state.adsData = null; state.adsMonth = null;
+  state.tab = "page"; state.view = "setup"; state.setupMsg = null;
+  render();
+}
+function downloadCSV(rows, name) {
+  const csv = "﻿" + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = name;
+  a.click();
+}
+function exportCSV() {
+  if (state.tab === "trend") {
+    if (!state.trendData) return;
+    const rows = [["Kỳ","Bài đăng","Tiếp cận","Story","Chi tiêu (₫)","Kết quả (TN+lead)","Chi phí/KQ (₫)"]];
+    for (const r of (state.trendMode === "week" ? state.trendData.weeks : state.trendData.months)) {
+      rows.push([r.label, r.posts ?? "", r.reach ?? "", r.stories ?? "",
+        r.spend != null ? Math.round(r.spend) : "", r.kq ?? "",
+        r.costPerKq != null ? Math.round(r.costPerKq) : ""]);
+    }
+    downloadCSV(rows, "xu-huong-" + state.trendMode + ".csv");
+    return;
+  }
+  if (state.tab === "ads") {
+    if (!state.adsData) return;
+    const rows = [["Chiến dịch","Trạng thái","Chi tiêu (₫)","Tin nhắn","Lead","Chi phí/KQ (₫)","Tiếp cận"]];
+    for (const c of [...state.adsData.campaigns].sort((a, b) => (+b.spend || 0) - (+a.spend || 0))) {
+      const msgs = actVal(c.actions, MSG_ACTION), leads = leadVal(c.actions);
+      const kq = msgs + leads, spend = +c.spend || 0;
+      rows.push([c.campaign_name, c.meta?.effective_status || "", Math.round(spend),
+        msgs, leads, kq ? Math.round(spend / kq) : "", c.reach || ""]);
+    }
+    downloadCSV(rows, "meta-ads-" + ymKey(state.month) + ".csv");
+    return;
+  }
+  if (!state.data) return;
+  const rows = [["Thời gian","Phân loại","Nội dung","Loại media","Tiếp cận","Cảm xúc","Bình luận","Chia sẻ","Link"]];
+  for (const p of state.data.posts) {
+    rows.push([fmtDate(p.created_time), catOf(p.category).name,
+      (p.message || "").replace(/\s+/g, " ").slice(0, 300), p.mediaType || "",
+      p.reach ?? "", p.reactions, p.comments, p.shares, p.permalink_url || ""]);
+  }
+  downloadCSV(rows, "fanpage-" + ymKey(state.month) + ".csv");
+}
+
+/* ---------- Render ---------- */
+function render() {
+  const app = document.getElementById("app");
+  if (!state.page || state.view === "setup") { app.innerHTML = renderSetup(); bindSetup(); return; }
+  let body;
+  if (state.tab === "ads") {
+    body = renderAdsTab();
+  } else if (state.tab === "inbox") {
+    body = renderInboxTab();
+  } else if (state.tab === "trend") {
+    body = renderTrendsTab();
+  } else if (state.view === "loading") {
+    body = `<div class="loading"><span class="spin"></span>Đang tải dữ liệu ${monthLabel(state.month)}…</div>`;
+  } else {
+    body = state.error ? renderError() : renderDashboard();
+  }
+  app.innerHTML = renderHeader() +
+    `<div class="layout">` + renderSidebar() +
+    `<div class="main">` + renderTabs() + tokenBanner() + body + `</div></div>`;
+  bindHeader(); bindTabs(); bindSidebar();
+  if (state.tab === "ads") bindAds();
+  else if (state.tab === "trend") bindTrends();
+  else if (state.view === "dashboard" && !state.error) { bindDashboard(); bindKpi(); }
+  applyMotion();
+}
+/* Hiệu ứng: thẻ trồi lần lượt, cột mọc so le, số đếm chạy */
+function applyMotion() {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  document.querySelectorAll(".card").forEach((el, i) => el.style.animationDelay = Math.min(i * 70, 350) + "ms");
+  document.querySelectorAll(".tile").forEach((el, i) => el.style.animationDelay = i * 45 + "ms");
+  document.querySelectorAll(".vchart .bar").forEach((el, i) => el.style.animationDelay = (i % 12) * 55 + "ms");
+  document.querySelectorAll(".bars .b").forEach((el, i) => el.style.animationDelay = Math.min(i * 14, 430) + "ms");
+  document.querySelectorAll(".cbar .fill").forEach((el, i) => el.style.animationDelay = i * 80 + "ms");
+  document.querySelectorAll(".cal .day").forEach((el, i) => el.style.animationDelay = Math.min(i * 10, 300) + "ms");
+  document.querySelectorAll(".tile .v").forEach(el => {
+    const m = el.textContent.trim().match(/^[\d.]+$/);
+    if (!m) return;
+    const target = parseInt(m[0].replace(/\./g, ""), 10);
+    if (!Number.isFinite(target) || target <= 0 || target > 1e10) return;
+    const t0 = performance.now(), dur = 650;
+    const tick = now => {
+      const p = Math.min(1, (now - t0) / dur);
+      el.textContent = Math.round(target * (1 - Math.pow(1 - p, 3))).toLocaleString("vi-VN");
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+// Token Graph Explorer thường chết sau 1–2 giờ — nhắc sớm để khỏi đứt giữa chừng
+function tokenBanner() {
+  if (load(LS.tokenPermanent)) return ""; // token vĩnh viễn — không nhắc theo tuổi nữa
+  const t = load(LS.tokenAt);
+  if (!t) return "";
+  const mins = Math.round((Date.now() - t) / 60000);
+  if (mins < 50) return "";
+  return `<div class="notice" style="border-left-color:var(--critical)">⏰ Token đã dùng <b>${mins} phút</b> — token Graph Explorer thường hết hạn sau 1–2 giờ.
+    Đổi sang token 60 ngày: mở <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank">Access Token Debugger</a>,
+    dán token hiện tại → bấm <b>Extend Access Token</b> → copy token mới → quay lại đây bấm "Đổi page / token" và dán vào.
+    <div style="margin-top:6px;"><a href="#" id="tokenPermaBtn">✓ Token của tôi là System User vĩnh viễn — đừng cảnh báo nữa</a></div></div>`;
+}
+/* ---------- Sidebar chọn page (đổi page không cần dán lại token) ---------- */
+function renderSidebar() {
+  const pages = load(LS.pages) || [];
+  if (pages.length < 2) return "";
+  return `<aside class="sidebar">
+    <div class="sblabel">FANPAGE (${pages.length})</div>
+    ${pages.map(p => `<div class="pageitem ${state.page && p.id === state.page.id ? "active" : ""}" data-pid="${esc(p.id)}" title="${esc(p.name)}">
+      ${p.picture ? `<img src="${esc(p.picture)}" alt="">` : ""}
+      <div class="pi-meta"><div class="pi-name">${esc(p.name)}</div>
+      <div class="pi-likes">${fmtNum(p.fan_count)} lượt thích</div></div>
+    </div>`).join("")}
+  </aside>`;
+}
+function bindSidebar() {
+  document.querySelectorAll(".pageitem").forEach(el =>
+    el.onclick = () => switchPage(el.dataset.pid));
+}
+function switchPage(pid) {
+  if (state.page && state.page.id === pid) return;
+  const p = (load(LS.pages) || []).find(x => x.id === pid);
+  if (!p) return;
+  state.page = p;
+  save(LS.selected, p);
+  // Dữ liệu là của page cũ — xóa hết, giữ nguyên tab đang xem
+  state.data = null; state.prevData = null; state.dataMonth = null;
+  state.inboxData = null; state.inboxMonth = null;
+  state.trendData = null;
+  clearStoriesMemo();
+  if (state.tab === "ads") render(); // ads theo tài khoản QC, không theo page
+  else if (state.tab === "inbox") loadInbox();
+  else if (state.tab === "trend") loadTrends();
+  else loadDashboard();
+}
+// Phiên cũ (kết nối trước khi có sidebar) chưa lưu danh sách page — nạp bù
+async function ensurePagesList() {
+  if ((load(LS.pages) || []).length) return;
+  const t = load(LS.userToken);
+  if (!t) return;
+  try {
+    const res = await gfetch("/me/accounts",
+      { fields: "id,name,access_token,category,picture{url},fan_count", limit: 100, access_token: t });
+    save(LS.pages, (res.data || []).map(p => ({
+      id: p.id, name: p.name, access_token: p.access_token,
+      picture: p.picture && p.picture.data && p.picture.data.url,
+      fan_count: p.fan_count, category: p.category,
+    })));
+    render();
+  } catch (e) { /* token cũ hết hạn — bỏ qua, user sẽ kết nối lại */ }
+}
+
+function renderTabs() {
+  return `<div class="tabs">
+    <button class="${state.tab === "page" ? "active" : ""}" data-tab="page">📄 Fanpage</button>
+    <button class="${state.tab === "ads" ? "active" : ""}" data-tab="ads">📣 Quảng cáo${isStaff() ? " 🔒" : ""}</button>
+    <button class="${state.tab === "inbox" ? "active" : ""}" data-tab="inbox">💬 Tin nhắn</button>
+    <button class="${state.tab === "trend" ? "active" : ""}" data-tab="trend">📈 Xu hướng</button>
+  </div>`;
+}
+function bindTabs() {
+  document.querySelectorAll(".tabs button").forEach(el =>
+    el.onclick = () => setTab(el.dataset.tab));
+}
+
+function renderSetup() {
+  return `
+  <div class="card setup" style="max-width:640px;margin:40px auto;">
+    <h2 style="font-size:18px;">🗓️ Quản lý Fanpage & Meta Ads — Kết nối</h2>
+    <p style="color:var(--text-secondary);margin-bottom:10px;">
+      App chạy hoàn toàn trên máy của anh — token chỉ lưu trong trình duyệt, không gửi đi đâu ngoài Facebook.
+    </p>
+    ${state.setupMsg ? `<div class="notice ${state.setupMsg.type === "err" ? "err" : ""}">${esc(state.setupMsg.text)}</div>` : ""}
+    <p><b>Cách lấy token (2 phút):</b></p>
+    <ol>
+      <li>Mở <a href="https://developers.facebook.com/tools/explorer/" target="_blank">Graph API Explorer</a></li>
+      <li>Chọn app (hoặc app mặc định), bấm <b>Generate Access Token</b></li>
+      <li>Thêm quyền: <code>pages_show_list</code>, <code>pages_read_engagement</code>, <code>read_insights</code>, <code>pages_manage_posts</code> (để đọc Story), <code>pages_read_user_content</code>, <code>ads_read</code> (để xem quảng cáo)</li>
+      <li>Copy token và dán vào ô dưới</li>
+    </ol>
+    <div style="display:flex;gap:8px;">
+      <input type="password" id="tokenInput" placeholder="Dán User Access Token vào đây…">
+      <button class="primary" id="connectBtn">Kết nối</button>
+    </div>
+    ${load(LS.userToken) ? `<div style="margin-top:10px;"><button id="savedTokenBtn">🔑 Dùng token đã lưu lần trước</button></div>` : ""}
+    <details style="margin-top:14px;color:var(--text-secondary);">
+      <summary style="cursor:pointer;font-weight:600;color:var(--text-primary);">💡 Token hết hạn nhanh? Cách lấy token dùng lâu dài</summary>
+      <div style="margin-top:8px;font-size:13px;line-height:1.6;">
+        <p><b>Cách 1 — Token 60 ngày (5 phút):</b> mở <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank">Access Token Debugger</a>,
+        dán token vừa lấy → kéo xuống bấm <b>Extend Access Token</b> → copy token mới dán vào đây. Hết hạn sau ~60 ngày.</p>
+        <p style="margin-top:6px;"><b>Cách 2 — Token không bao giờ hết hạn (~30 phút, làm 1 lần):</b>
+        tạo app tại <a href="https://developers.facebook.com/apps/" target="_blank">developers.facebook.com</a> →
+        vào <a href="https://business.facebook.com/settings" target="_blank">Cài đặt doanh nghiệp</a> → <b>Người dùng hệ thống (System User)</b> →
+        tạo system user → gán quyền quản lý Page + tài khoản quảng cáo → <b>Tạo token</b> chọn app vừa tạo,
+        tick các quyền: <code>pages_show_list, pages_read_engagement, pages_manage_posts, pages_messaging, ads_read, business_management</code>.
+        Token system user không có hạn — dán một lần dùng mãi.</p>
+      </div>
+    </details>
+    ${state.foundPages ? `
+      <p style="margin-top:14px;font-weight:600;">Chọn fanpage cần quản lý:</p>
+      <div class="pagelist">
+        ${state.foundPages.map((p, i) => `
+          <div class="pagecard" data-idx="${i}">
+            <img src="${esc(p.picture?.data?.url || "")}" alt="">
+            <div><div class="nm">${esc(p.name)}</div>
+            <div class="ct">${esc(p.category || "")} · ${fmtNum(p.fan_count)} lượt thích</div></div>
+          </div>`).join("")}
+      </div>` : ""}
+  </div>`;
+}
+function bindSetup() {
+  const btn = document.getElementById("connectBtn");
+  if (btn) btn.onclick = () => {
+    const t = document.getElementById("tokenInput").value.trim();
+    if (t) connectWithUserToken(t);
+  };
+  const saved = document.getElementById("savedTokenBtn");
+  if (saved) saved.onclick = () => connectWithUserToken(load(LS.userToken));
+  document.querySelectorAll(".pagecard").forEach(el =>
+    el.onclick = () => selectPage(state.foundPages[+el.dataset.idx]));
+}
+
+function renderHeader() {
+  const p = state.page;
+  const isCurrent = ymKey(state.month) === ymKey(new Date());
+  return `
+  <header>
+    ${p.picture ? `<img class="avatar" src="${esc(p.picture)}" alt="">` : ""}
+    <div class="pageinfo">
+      <h1>${esc(p.name)}</h1>
+      <div class="sub">${p.fan_count ? fmtNum(p.fan_count) + " lượt thích · " : ""}${isStaff() ? "Chế độ nhân viên" : "Quản lý fanpage & quảng cáo"}</div>
+    </div>
+    <div class="monthnav">
+      <button class="icon" id="prevM">‹</button>
+      <span class="label">${monthLabel(state.month)}</span>
+      <button class="icon" id="nextM" ${isCurrent ? "disabled" : ""}>›</button>
+    </div>
+    <div class="toolbar">
+      <button id="refreshBtn">↻ Cập nhật</button>
+      <button id="reportBtn" title="Sao chép tóm tắt số liệu tháng (các tab đã mở) để dán vào Zalo/Messenger">📋 Báo cáo</button>
+      <button id="csvBtn">⬇ CSV</button>
+      <button id="disconnectBtn">Đổi page / token</button>
+    </div>
+  </header>`;
+}
+function bindHeader() {
+  const q = id => document.getElementById(id);
+  if (q("prevM")) q("prevM").onclick = () => changeMonth(-1);
+  if (q("nextM")) q("nextM").onclick = () => changeMonth(1);
+  if (q("refreshBtn")) q("refreshBtn").onclick = () =>
+    state.tab === "ads" ? loadAds(true)
+    : state.tab === "inbox" ? loadInbox(true)
+    : state.tab === "trend" ? loadTrends(true)
+    : loadDashboard(true);
+  if (q("csvBtn")) q("csvBtn").onclick = exportCSV;
+  if (q("reportBtn")) q("reportBtn").onclick = copyReport;
+  if (q("tokenPermaBtn")) q("tokenPermaBtn").onclick = (e) => {
+    e.preventDefault();
+    save(LS.tokenPermanent, true);
+    render();
+  };
+  if (q("disconnectBtn")) q("disconnectBtn").onclick = disconnect;
+}
+function renderError() {
+  return `<div class="notice err"><b>Không tải được dữ liệu:</b> ${esc(state.error.message)}</div>`;
+}
+
+/* ---------- KPI đăng bài theo page ---------- */
+function getKpis() { return load("fp_kpi") || {}; }
+function seedKpis() {
+  if (load("fp_kpi")) return;
+  const k = {};
+  for (const p of (load(LS.pages) || [])) {
+    const n = (p.name || "").toLowerCase();
+    if (n.includes("sachi garden")) k[p.id] = { posts: 30, reels: 0, stories: 0 };
+    else if (n.includes("sachi camping")) k[p.id] = { posts: 30, reels: 0, stories: 0 };
+    else if (n.includes("september")) k[p.id] = { posts: 45, reels: 15, stories: 20 };
+  }
+  if (Object.keys(k).length) save("fp_kpi", k);
+}
+// Đếm từ dữ liệu tháng: reel nhận diện qua permalink /reel/
+function kpiCounts(d) {
+  if (!d) return null;
+  const reels = d.posts.filter(p => p.permalink_url && p.permalink_url.includes("/reel/")).length;
+  return {
+    posts: d.posts.length - reels,
+    reels,
+    stories: d.storiesError ? null : d.stories.length,
+  };
+}
+// Nạp nền số liệu các page khác có KPI (dùng cache 30' nên nhẹ)
+async function loadKpiBoard(force = false) {
+  const kpis = getKpis();
+  const pages = (load(LS.pages) || []).filter(p => kpis[p.id]);
+  state.kpiData = state.kpiData || {};
+  for (const p of pages) {
+    if (state.page && p.id === state.page.id) continue;
+    const key = ymKey(state.month) + "_" + p.id;
+    if (state.kpiData[key] && !force) continue;
+    try {
+      state.kpiData[key] = await fetchMonthData(p, state.month, { force });
+      if (state.tab === "page" && state.view === "dashboard") render();
+    } catch (e) { /* page lỗi — bỏ qua, hiện "?" */ }
+  }
+}
+function renderKpiCard() {
+  const kpis = getKpis();
+  const pages = load(LS.pages) || [];
+  const withKpi = pages.filter(p => kpis[p.id]);
+  if (!withKpi.length && !state.kpiEdit) {
+    return `<div class="card"><h2>🎯 KPI đăng bài <span class="hint">— chưa đặt mục tiêu</span></h2>
+      <button id="kpiEditBtn">⚙ Đặt KPI cho các page</button></div>`;
+  }
+  const now = new Date();
+  const y = state.month.getFullYear(), m = state.month.getMonth();
+  const daysIn = new Date(y, m + 1, 0).getDate();
+  const isCur = ymKey(state.month) === ymKey(now);
+  const pace = isCur ? Math.min(1, now.getDate() / daysIn) : 1;
+
+  if (state.kpiEdit) {
+    return `<div class="card kpi-edit"><h2>🎯 Sửa KPI tháng <span class="hint">— 0 = không đặt mục tiêu</span></h2>
+      ${pages.map(p => {
+        const k = kpis[p.id] || { posts: 0, reels: 0, stories: 0 };
+        return `<div class="kpi-row" data-pid="${esc(p.id)}">
+          <div class="kpi-name">${esc(p.name)}</div>
+          <div class="kpi-metric">Bài <input type="number" min="0" data-k="posts" value="${k.posts || 0}"></div>
+          <div class="kpi-metric">Reel <input type="number" min="0" data-k="reels" value="${k.reels || 0}"></div>
+          <div class="kpi-metric">Story <input type="number" min="0" data-k="stories" value="${k.stories || 0}"></div>
+        </div>`;
+      }).join("")}
+      <div style="margin-top:12px;display:flex;gap:8px;">
+        <button class="primary" id="kpiSaveBtn">Lưu KPI</button>
+        <button id="kpiCancelBtn">Hủy</button>
+      </div></div>`;
+  }
+
+  // Đếm cả tháng + riêng hôm nay cho từng loại nội dung
+  const daysLeft = isCur ? (daysIn - now.getDate() + 1) : 0;
+  const isToday = t => {
+    const x = parseFbTime(t);
+    return x.getDate() === now.getDate() && x.getMonth() === now.getMonth() && x.getFullYear() === now.getFullYear();
+  };
+  const countBoth = (d, combineReels) => {
+    if (!d) return null;
+    const isReel = p => p.permalink_url && p.permalink_url.includes("/reel/");
+    const posts = d.posts.filter(p => !isReel(p)), reels = d.posts.filter(isReel);
+    const c = {
+      posts: { m: posts.length, t: posts.filter(p => isToday(p.created_time)).length },
+      reels: { m: reels.length, t: reels.filter(p => isToday(p.created_time)).length },
+      stories: d.storiesError ? { m: null, t: null }
+        : { m: d.stories.length, t: d.stories.filter(s => isToday(s.creation_time)).length },
+    };
+    if (combineReels) {
+      c.posts = { m: c.posts.m + c.reels.m, t: c.posts.t + c.reels.t };
+      c.reels = { m: 0, t: 0 };
+    }
+    return c;
+  };
+  // Chỉ tiêu HÔM NAY = phần còn thiếu (tính đến đầu ngày) chia đều cho số ngày còn lại
+  const quotaToday = (target, cnt) => {
+    if (!isCur || cnt.m == null) return 0;
+    const remainAtDayStart = Math.max(0, target - (cnt.m - cnt.t));
+    return Math.min(remainAtDayStart, Math.ceil(remainAtDayStart / daysLeft));
+  };
+  const NAMES = { posts: "bài", reels: "reel", stories: "story" };
+  const bar = (key, label, cnt, target) => {
+    if (!target) return "";
+    const cur = cnt ? cnt.m : null;
+    const monthDone = cur != null && cur >= target;
+    const q = cnt ? quotaToday(target, cnt) : 0;
+    const todayOk = cnt && cnt.t != null && cnt.t >= q;
+    const color = monthDone ? "var(--good)" : "var(--series-1)";
+    let dayLine = "";
+    if (isCur && cnt && cur != null && !monthDone) {
+      dayLine = todayOk
+        ? `<div style="font-size:11px;margin-top:3px;color:var(--good)">Hôm nay ${cnt.t}/${q} ✓</div>`
+        : `<div style="font-size:11px;margin-top:3px;color:var(--series-3)">Hôm nay ${cnt.t}/${q} — còn ${q - cnt.t}</div>`;
+    }
+    return `<div class="kpi-metric">
+      <div class="lbl"><span>${label}</span><b>${cur == null ? "?" : cur}/${target}</b></div>
+      <div class="kpi-bar"><div class="fill" style="width:${cur == null ? 0 : Math.min(100, cur / target * 100)}%;background:${color}"></div></div>
+      ${dayLine}
+    </div>`;
+  };
+  const rows = withKpi.map(p => {
+    const k = kpis[p.id];
+    const d = (state.page && p.id === state.page.id && state.dataMonth === ymKey(state.month))
+      ? state.data
+      : (state.kpiData || {})[ymKey(state.month) + "_" + p.id];
+    const c = countBoth(d, !(k.reels > 0));
+    let status = `<span style="color:var(--muted)">đang nạp…</span>`;
+    if (c) {
+      const checks = ["posts", "reels", "stories"].filter(key => k[key] > 0)
+        .map(key => ({ key, cnt: c[key], target: k[key] }));
+      const allMonthDone = checks.every(x => x.cnt.m != null && x.cnt.m >= x.target);
+      if (allMonthDone) {
+        status = `<span style="color:var(--good)">🎉 Đủ KPI tháng</span>`;
+      } else if (!isCur) {
+        const miss = checks.filter(x => x.cnt.m == null || x.cnt.m < x.target)
+          .map(x => `${x.target - (x.cnt.m || 0)} ${NAMES[x.key]}`).join(", ");
+        status = `<span style="color:var(--critical)">✗ Thiếu ${miss}</span>`;
+      } else {
+        const lacking = checks.filter(x => x.cnt.t == null || x.cnt.t < quotaToday(x.target, x.cnt));
+        status = lacking.length === 0
+          ? `<span style="color:var(--good)">✓ Hôm nay đủ</span>`
+          : `<span style="color:var(--series-3)">⏳ Còn ${lacking.map(x => `${quotaToday(x.target, x.cnt) - (x.cnt.t || 0)} ${NAMES[x.key]}`).join(", ")}</span>`;
+      }
+    }
+    return `<div class="kpi-row">
+      <div class="kpi-name" title="${esc(p.name)}">${esc(p.name)}</div>
+      ${bar("posts", "Bài", c && c.posts, k.posts)}
+      ${bar("reels", "Reel", c && c.reels, k.reels)}
+      ${bar("stories", "Story", c && c.stories, k.stories)}
+      <div class="kpi-status">${status}</div>
+    </div>`;
+  }).join("");
+  return `<div class="card"><h2>🎯 KPI đăng ${monthLabel(state.month).toLowerCase()}
+      <span class="hint">— ${isCur ? "mục tiêu hôm nay = phần còn thiếu chia đều các ngày còn lại" : "tháng đã kết thúc"}</span>
+      <button id="kpiEditBtn" style="float:right;font-size:12px;padding:4px 10px;">⚙ Sửa</button></h2>
+    ${rows}</div>`;
+}
+function bindKpi() {
+  const q = id => document.getElementById(id);
+  if (q("kpiEditBtn")) q("kpiEditBtn").onclick = () => { state.kpiEdit = true; render(); };
+  if (q("kpiCancelBtn")) q("kpiCancelBtn").onclick = () => { state.kpiEdit = false; render(); };
+  if (q("kpiSaveBtn")) q("kpiSaveBtn").onclick = () => {
+    const k = {};
+    document.querySelectorAll(".kpi-edit .kpi-row").forEach(row => {
+      const v = {};
+      row.querySelectorAll("input[data-k]").forEach(inp => v[inp.dataset.k] = Math.max(0, +inp.value || 0));
+      if (v.posts || v.reels || v.stories) k[row.dataset.pid] = v;
+    });
+    save("fp_kpi", k);
+    state.kpiEdit = false;
+    loadKpiBoard();
+    render();
+  };
+}
+
+/* ---------- Báo cáo nhanh (copy để gửi Zalo/Messenger) ---------- */
+function buildReport() {
+  const ym = ymKey(state.month);
+  const lines = [`📊 BÁO CÁO ${monthLabel(state.month).toUpperCase()} — ${state.page.name}`];
+  if (state.data && state.dataMonth === ym) {
+    const d = state.data;
+    const engage = d.posts.reduce((s, p) => s + p.reactions + p.comments + p.shares, 0);
+    lines.push("", "— FANPAGE —",
+      `• Bài đăng: ${d.posts.length}`,
+      `• Story: ${d.storiesError ? "?" : d.stories.length} · Live: ${d.lives.length}`);
+    const reach = sumReach(d.posts);
+    if (reach != null) lines.push(`• Tiếp cận: ${fmtNum(reach)}`);
+    if (engage) lines.push(`• Tương tác: ${fmtNum(engage)}`);
+  }
+  if (!isStaff() && state.adAccount && state.adsData && state.adsMonth === ym) {
+    const t = adTotals(state.adsData);
+    lines.push("", `— QUẢNG CÁO (${state.adAccount.name}) —`,
+      `• Chi tiêu: ${fmtMoney(t.spend)}`,
+      `• Tin nhắn: ${fmtNum(t.msgs)} · Lead: ${fmtNum(t.leads)} → ${fmtNum(t.kq)} kết quả`,
+      `• Chi phí/kết quả: ${fmtMoney(t.costPerKq)}`);
+    if (t.reach) lines.push(`• Tiếp cận: ${fmtNum(t.reach)} · CPM: ${fmtMoney(t.cpm)}`);
+  }
+  if (state.inboxData && state.inboxMonth === ym) {
+    const i = state.inboxData;
+    lines.push("", "— TIN NHẮN —",
+      `• ${fmtNum(i.convActive)} hội thoại có hoạt động (${fmtNum(i.convNew)} mới)`,
+      `• Khách gửi ${fmtNum(i.msgsIn)} tin · page trả lời ${fmtNum(i.msgsOut)} tin`,
+      `• Phản hồi TB: ${fmtDur(i.avgResp)} (trung vị ${fmtDur(i.medResp)})`,
+      `• Đang chờ trả lời: ${i.awaiting.length}`);
+  }
+  if (lines.length === 1) lines.push("", "(Chưa có dữ liệu — mở các tab để tải số liệu trước khi sao chép)");
+  return lines.join("\n");
+}
+async function copyReport() {
+  const btn = document.getElementById("reportBtn");
+  try {
+    await navigator.clipboard.writeText(buildReport());
+    if (btn) {
+      btn.textContent = "✓ Đã sao chép";
+      setTimeout(() => { if (btn.isConnected) btn.textContent = "📋 Báo cáo"; }, 1600);
+    }
+  } catch (e) {
+    alert("Không sao chép được (" + e.message + ") — thử bấm lại sau khi chạm vào trang.");
+  }
+}
+
+function sumReach(posts) {
+  let has = false, sum = 0;
+  for (const p of posts) if (p.reach != null) { has = true; sum += p.reach; }
+  return has ? sum : null;
+}
+function delta(cur, prev, unit) {
+  if (cur == null || prev == null) return "";
+  const d = cur - prev;
+  if (d === 0) return `<div class="d">= tháng trước</div>`;
+  const cls = d > 0 ? "up" : "";
+  return `<div class="d ${cls}">${d > 0 ? "▲" : "▼"} ${fmtNum(Math.abs(d))}${unit || ""} so với tháng trước</div>`;
+}
+
+function renderDashboard() {
+  const d = state.data;
+  const posts = d.posts;
+  const prev = state.prevData;
+  const totalReach = sumReach(posts);
+  const avgReach = totalReach != null && posts.length ? Math.round(totalReach / posts.length) : null;
+  const engage = posts.reduce((s, p) => s + p.reactions + p.comments + p.shares, 0);
+  const prevReach = prev ? sumReach(prev.posts) : null;
+  const prevEngage = prev ? prev.posts.reduce((s, p) => s + p.reactions + p.comments + p.shares, 0) : null;
+
+  return `
+  ${!d.insightsOk ? `<div class="notice">Không đọc được <b>lượt tiếp cận</b> — Meta đã gỡ metric tiếp cận per-bài khỏi API mới, hoặc token thiếu <code>read_insights</code>. Các số liệu khác vẫn hiển thị.</div>` : ""}
+  ${d.engagementOk === false ? `<div class="notice">Token thiếu quyền <code>pages_read_user_content</code> nên <b>cảm xúc & bình luận</b> không đọc được — cột Tương tác hiện chỉ gồm lượt <b>chia sẻ</b>.</div>` : ""}
+  ${renderKpiCard()}
+  ${d.storiesError ? `<div class="notice">Không đọc được <b>Story</b>: ${esc(d.storiesError)} — cần quyền <code>pages_manage_posts</code>. Lưu ý: API chỉ trả về story còn trong hệ thống.</div>` : ""}
+
+  <div class="tiles">
+    <div class="tile"><div class="k">Bài đăng</div><div class="v">${posts.length}</div>${prev ? delta(posts.length, prev.posts.length, " bài") : ""}</div>
+    <div class="tile"><div class="k">Story</div><div class="v">${d.storiesError ? "—" : d.stories.length}</div>${prev && !d.storiesError && !prev.storiesError ? delta(d.stories.length, prev.stories.length) : ""}</div>
+    <div class="tile"><div class="k">Live</div><div class="v">${d.lives.length}</div>${prev ? delta(d.lives.length, prev.lives.length) : ""}</div>
+    <div class="tile"><div class="k">Tổng tiếp cận</div><div class="v">${fmtNum(totalReach)}</div>${delta(totalReach, prevReach)}</div>
+    <div class="tile"><div class="k">TB tiếp cận / bài</div><div class="v">${fmtNum(avgReach)}</div></div>
+    <div class="tile"><div class="k">Tổng tương tác</div><div class="v">${fmtNum(engage)}</div>${delta(engage, prevEngage)}</div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>Lịch đăng bài <span class="hint">— màu ô = số bài trong ngày</span></h2>
+      ${renderCalendar()}
+      <div class="legend">
+        <span class="item"><span class="sw"></span>0</span>
+        <span class="item"><span class="sw" style="background:var(--seq-1)"></span>1</span>
+        <span class="item"><span class="sw" style="background:var(--seq-2)"></span>2</span>
+        <span class="item"><span class="sw" style="background:var(--seq-3)"></span>3+</span>
+        <span class="item"><span class="dot story" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span>Story</span>
+        <span class="item"><span class="dot live" style="width:8px;height:8px;border-radius:50%;display:inline-block"></span>Live</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Nội dung về gì <span class="hint">— phân loại theo từ khóa caption</span></h2>
+      ${renderContentBreakdown()}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Danh sách bài viết (${posts.length}) <span class="hint">— bấm tiêu đề cột để sắp xếp</span></h2>
+    ${posts.length ? renderPostsTable() : `<div class="empty">Chưa có bài viết nào trong ${monthLabel(state.month)}.</div>`}
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>Live trong tháng (${d.lives.length})</h2>
+      ${d.lives.length ? renderLives() : `<div class="empty">Không có phiên live nào.</div>`}
+    </div>
+    <div class="card">
+      <h2>Story trong tháng (${d.storiesError ? "?" : d.stories.length})</h2>
+      ${d.storiesError ? `<div class="empty">Không đọc được story.</div>` :
+        d.stories.length ? renderStories() : `<div class="empty">Không có story nào (hoặc story cũ đã bị Facebook xóa khỏi API).</div>`}
+    </div>
+  </div>
+  <p class="updated">Dữ liệu cập nhật lúc ${new Date(d.fetchedAt).toLocaleString("vi-VN")} · dữ liệu lưu tạm 30 phút, bấm ↻ Cập nhật để tải mới.</p>`;
+}
+
+function renderCalendar() {
+  const d = state.data;
+  const y = state.month.getFullYear(), m = state.month.getMonth();
+  const daysIn = new Date(y, m + 1, 0).getDate();
+  const firstDow = (new Date(y, m, 1).getDay() + 6) % 7; // T2 = 0
+  const byDay = key => {
+    const map = {};
+    for (const item of d[key]) {
+      const t = parseFbTime(item.created_time || item.broadcast_start_time || item.creation_time);
+      if (t.getMonth() !== m || t.getFullYear() !== y) continue;
+      map[t.getDate()] = (map[t.getDate()] || 0) + 1;
+    }
+    return map;
+  };
+  const postD = byDay("posts"), storyD = byDay("stories"), liveD = byDay("lives");
+  const today = new Date();
+  let html = ["T2","T3","T4","T5","T6","T7","CN"].map(x => `<div class="dow">${x}</div>`).join("");
+  for (let i = 0; i < firstDow; i++) html += `<div class="day blank"></div>`;
+  for (let day = 1; day <= daysIn; day++) {
+    const n = postD[day] || 0;
+    const lvl = n >= 3 ? "l3" : n === 2 ? "l2" : n === 1 ? "l1" : "";
+    const isToday = today.getFullYear() === y && today.getMonth() === m && today.getDate() === day;
+    const tip = `${day}/${m + 1}: ${n} bài` + (storyD[day] ? `, ${storyD[day]} story` : "") + (liveD[day] ? `, ${liveD[day]} live` : "");
+    html += `<div class="day ${lvl} ${isToday ? "today" : ""}" title="${tip}">
+      <span class="n">${day}</span>
+      <span class="dots">${storyD[day] ? '<span class="dot story"></span>' : ""}${liveD[day] ? '<span class="dot live"></span>' : ""}</span>
+    </div>`;
+  }
+  return `<div class="cal">${html}</div>`;
+}
+
+function renderContentBreakdown() {
+  const posts = state.data.posts;
+  if (!posts.length) return `<div class="empty">Chưa có bài viết.</div>`;
+  const counts = {};
+  for (const p of posts) counts[p.category] = (counts[p.category] || 0) + 1;
+  const max = Math.max(...Object.values(counts));
+  const items = CATEGORIES.filter(c => counts[c.key]).sort((a, b) => counts[b.key] - counts[a.key]);
+  return items.map(c => {
+    const n = counts[c.key];
+    const reach = sumReach(posts.filter(p => p.category === c.key));
+    return `<div class="cbar">
+      <div class="row1">
+        <span class="name"><span class="sw" style="background:${c.color}"></span>${c.name}</span>
+        <span class="val">${n} bài${reach != null ? " · " + fmtNum(reach) + " tiếp cận" : ""}</span>
+      </div>
+      <div class="track"><div class="fill" style="width:${Math.round(n / max * 100)}%;background:${c.color}"></div></div>
+    </div>`;
+  }).join("");
+}
+
+function renderPostsTable() {
+  const posts = [...state.data.posts];
+  const s = state.sortBy;
+  posts.sort((a, b) => {
+    if (s === "reach") return (b.reach ?? -1) - (a.reach ?? -1);
+    if (s === "engage") return (b.reactions + b.comments + b.shares) - (a.reactions + a.comments + a.shares);
+    return new Date(b.created_time) - new Date(a.created_time);
+  });
+  const arrow = k => s === k ? " ↓" : "";
+  return `<div class="tablewrap"><table>
+    <thead><tr>
+      <th class="sortable" data-sort="time">Thời gian${arrow("time")}</th>
+      <th>Phân loại</th><th>Nội dung</th>
+      <th class="num sortable" data-sort="reach">Tiếp cận${arrow("reach")}</th>
+      <th class="num sortable" data-sort="engage">Tương tác${arrow("engage")}</th>
+      <th></th>
+    </tr></thead>
+    <tbody>${posts.map(p => {
+      const c = catOf(p.category);
+      const media = p.mediaType === "video" ? "🎬" : p.mediaType === "photo" ? "🖼" : p.mediaType === "album" ? "🖼🖼" : "";
+      return `<tr>
+        <td style="white-space:nowrap">${fmtDate(p.created_time)}</td>
+        <td><span class="badge"><span class="sw" style="background:${c.color}"></span>${c.name}</span></td>
+        <td><div class="excerpt">${media ? media + " " : ""}${esc(p.message) || "<i>(không có caption)</i>"}</div></td>
+        <td class="num">${fmtNum(p.reach)}</td>
+        <td class="num" title="${p.reactions} cảm xúc · ${p.comments} bình luận · ${p.shares} chia sẻ">${fmtNum(p.reactions + p.comments + p.shares)}</td>
+        <td>${p.permalink_url ? `<a href="${esc(p.permalink_url)}" target="_blank">Xem</a>` : ""}</td>
+      </tr>`;
+    }).join("")}</tbody>
+  </table></div>`;
+}
+
+function renderLives() {
+  return `<div class="tablewrap"><table><thead><tr><th>Thời gian live</th><th>Tiêu đề</th><th>Trạng thái</th><th></th></tr></thead>
+  <tbody>${state.data.lives.map(v => `<tr>
+    <td style="white-space:nowrap">${fmtDate(v.broadcast_start_time || v.creation_time)}</td>
+    <td>${esc(v.title || v.description || "(không tiêu đề)")}</td>
+    <td>${v.status === "LIVE" ? "🔴 Đang live" : v.status === "VOD" ? "Đã kết thúc" : esc(v.status || "")}</td>
+    <td>${v.permalink_url ? `<a href="https://facebook.com${esc(v.permalink_url)}" target="_blank">Xem</a>` : ""}</td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+function renderStories() {
+  return `<div class="tablewrap"><table><thead><tr><th>Thời gian</th><th>Loại</th><th>Trạng thái</th><th></th></tr></thead>
+  <tbody>${state.data.stories.map(st => `<tr>
+    <td style="white-space:nowrap">${fmtDate(st.creation_time)}</td>
+    <td>${st.media_type === "video" ? "🎬 Video" : "🖼 Ảnh"}</td>
+    <td>${st.status === "PUBLISHED" ? "Đã đăng" : esc(st.status || "")}</td>
+    <td>${st.url ? `<a href="${esc(st.url)}" target="_blank">Xem</a>` : ""}</td>
+  </tr>`).join("")}</tbody></table></div>`;
+}
+
+function bindDashboard() {
+  document.querySelectorAll("th.sortable").forEach(el =>
+    el.onclick = () => { state.sortBy = el.dataset.sort; render(); });
+}
+
+/* ---------- Tab Quảng cáo ---------- */
+function adsTokenSection() {
+  const has = !!load(LS.adsToken);
+  return `<details class="card" style="padding:12px 16px;" ${!state.adAccounts.length ? "open" : ""}>
+    <summary style="cursor:pointer;font-weight:600;">⚙ Token quảng cáo riêng ${has ? "· <span style='color:var(--good)'>đang dùng</span>" : "(tùy chọn)"}</summary>
+    <div style="margin-top:8px;color:var(--text-secondary);font-size:13px;line-height:1.6;">
+      Dành cho trường hợp tài khoản QC nằm ở <b>Business Manager khác</b> (tài khoản thuê/agency) nên token chính
+      (System User) không nhìn thấy: dán <b>token cá nhân</b> (đã Extend 60 ngày) vào đây — app chỉ dùng nó cho phần quảng cáo,
+      fanpage &amp; tin nhắn vẫn chạy bằng token chính vĩnh viễn.
+      <div style="display:flex;gap:8px;margin-top:8px;">
+        <input type="password" id="adsTokenInput" placeholder="Dán token quảng cáo (cá nhân, có ads_read)…">
+        <button class="primary" id="adsTokenBtn">Lưu</button>
+        ${has ? `<button id="adsTokenClear">Gỡ</button>` : ""}
+      </div>
+    </div>
+  </details>`;
+}
+function renderAdsTab() {
+  if (isStaff()) {
+    return `<div class="card" style="text-align:center;padding:44px 20px;">
+      <div style="font-size:42px;">🔒</div>
+      <h2 style="margin:10px 0 6px;">Khu vực Quảng cáo</h2>
+      <p style="color:var(--text-secondary);">Chỉ admin có quyền xem mục này.</p>
+    </div>`;
+  }
+  if (!state.adAccounts.length) {
+    return `<div class="card"><div class="notice">Chưa thấy tài khoản quảng cáo nào.
+      Token chính không có quyền <code>ads_read</code>, hoặc tài khoản QC nằm ở BM khác — dán token quảng cáo riêng bên dưới.</div></div>`
+      + adsTokenSection();
+  }
+  const sel = `<div class="toolbar" style="margin-bottom:14px;">
+    <span style="color:var(--text-secondary);">Tài khoản QC:</span>
+    <select id="adAcctSel">${state.adAccounts.map(a =>
+      `<option value="${esc(a.id)}" ${state.adAccount && a.id === state.adAccount.id ? "selected" : ""}>
+        ${esc(a.name)}${a.account_status === 1 ? "" : " (đã tắt)"}</option>`).join("")}</select>
+  </div>`;
+  if (state.adsLoading) return sel + `<div class="loading"><span class="spin"></span>Đang tải dữ liệu quảng cáo ${monthLabel(state.month)}…</div>`;
+  if (state.adsError) {
+    const msg = state.adsError.message || "";
+    const expired = /Session has expired|Error validating access token|expired/i.test(msg);
+    return sel + `<div class="notice err"><b>Không tải được dữ liệu quảng cáo:</b> ${esc(msg)}<br><br>
+      ${expired
+        ? `⚠ <b>Token quảng cáo đã hết hạn.</b> Nguyên nhân hay gặp nhất: dán nhầm <b>bản ngắn hạn (1–2 giờ)</b> thay vì bản đã Extend.
+           Cách lấy đúng bản 60 ngày: mở <a href="https://developers.facebook.com/tools/debug/accesstoken/" target="_blank">Access Token Debugger</a>
+           → dán token → Debug → bấm <b>Extend Access Token</b> → <b>copy token MỚI hiện ra ở dòng bên dưới nút bấm</b>
+           (kiểm tra lại bằng cách Debug token mới: dòng Expires phải là ~2 tháng sau) → dán vào mục "⚙ Token quảng cáo riêng" bên dưới.`
+        : `Kiểm tra token còn hạn và có quyền <code>ads_read</code>.`}</div>` + adsTokenSection();
+  }
+  if (!state.adsData) return sel + `<div class="empty">Chọn tài khoản quảng cáo để xem dữ liệu.</div>` + adsTokenSection();
+  return sel + renderAdsBody() + adsTokenSection();
+}
+async function saveAdsToken(t) {
+  save(LS.adsToken, t);
+  state.adsLoading = true; state.adsError = null; render();
+  try {
+    const ad = await gfetch("/me/adaccounts",
+      { fields: "id,name,account_status,currency,amount_spent", limit: 100, access_token: t });
+    state.adAccounts = (ad.data || []).sort((a, b) =>
+      (a.account_status === 1 ? 0 : 1) - (b.account_status === 1 ? 0 : 1) ||
+      (+b.amount_spent || 0) - (+a.amount_spent || 0));
+    save(LS.adAccounts, state.adAccounts);
+    state.adAccount = state.adAccounts.find(a => a.account_status === 1) || state.adAccounts[0] || null;
+    save(LS.adSelected, state.adAccount);
+    // Cache ads cũ thuộc token cũ — xóa để nạp mới
+    for (const k of Object.keys(localStorage)) if (k.startsWith(LS.adCachePrefix)) localStorage.removeItem(k);
+    state.adsData = null; state.adsMonth = null; state.adsLoading = false;
+    loadAds(true);
+  } catch (e) {
+    state.adsLoading = false;
+    state.adsError = new Error("Token quảng cáo không dùng được: " + e.message);
+    render();
+  }
+}
+async function clearAdsToken() {
+  localStorage.removeItem(LS.adsToken);
+  for (const k of Object.keys(localStorage)) if (k.startsWith(LS.adCachePrefix)) localStorage.removeItem(k);
+  state.adsData = null; state.adsMonth = null;
+  // Nạp lại danh sách tài khoản bằng token chính
+  try {
+    const ad = await gfetch("/me/adaccounts",
+      { fields: "id,name,account_status,currency,amount_spent", limit: 100, access_token: load(LS.userToken) });
+    state.adAccounts = (ad.data || []).sort((a, b) =>
+      (a.account_status === 1 ? 0 : 1) - (b.account_status === 1 ? 0 : 1) ||
+      (+b.amount_spent || 0) - (+a.amount_spent || 0));
+  } catch (e) { state.adAccounts = []; }
+  save(LS.adAccounts, state.adAccounts);
+  state.adAccount = state.adAccounts.find(a => a.account_status === 1) || state.adAccounts[0] || null;
+  save(LS.adSelected, state.adAccount);
+  loadAds(true);
+}
+function deltaCost(cur, prev) {
+  if (cur == null || prev == null) return "";
+  const d = cur - prev;
+  if (!d) return `<div class="d">= tháng trước</div>`;
+  return `<div class="d ${d < 0 ? "up" : ""}">${d > 0 ? "▲" : "▼"} ${fmtMoney(Math.abs(d))} so với tháng trước</div>`;
+}
+function renderAdsBody() {
+  const d = state.adsData;
+  const t = adTotals(d);
+  const p = state.prevAdsData ? adTotals(state.prevAdsData) : null;
+  return `
+  <div class="tiles">
+    <div class="tile"><div class="k">Chi tiêu</div><div class="v" style="font-size:22px">${fmtMoney(t.spend)}</div>
+      ${p ? `<div class="d">${t.spend >= p.spend ? "▲" : "▼"} ${fmtMoney(Math.abs(t.spend - p.spend))} so với tháng trước</div>` : ""}</div>
+    <div class="tile"><div class="k">Tin nhắn bắt đầu</div><div class="v">${fmtNum(t.msgs)}</div>${p ? delta(t.msgs, p.msgs) : ""}</div>
+    <div class="tile"><div class="k">Lead</div><div class="v">${fmtNum(t.leads)}</div>${p ? delta(t.leads, p.leads) : ""}</div>
+    <div class="tile"><div class="k">Chi phí / kết quả</div><div class="v" style="font-size:22px">${fmtMoney(t.costPerKq)}</div>
+      ${p ? deltaCost(t.costPerKq, p.costPerKq) : ""}</div>
+    <div class="tile"><div class="k">Tiếp cận</div><div class="v">${fmtNum(t.reach || null)}</div></div>
+    <div class="tile"><div class="k">CPM</div><div class="v" style="font-size:22px">${fmtMoney(t.cpm)}</div></div>
+  </div>
+  <div class="card">
+    <h2>Chi tiêu theo ngày <span class="hint">— rê chuột vào cột để xem chi tiết</span></h2>
+    ${renderDailySpend()}
+  </div>
+  <div class="card">
+    <h2>Chiến dịch (${d.campaigns.length}) <span class="hint">— chỉ hiện chiến dịch có phân phối trong tháng</span></h2>
+    ${d.campaigns.length ? renderCampaignsTable() : `<div class="empty">Không có chiến dịch nào chạy trong ${monthLabel(state.month)}.</div>`}
+  </div>
+  <p class="updated">Kết quả = tin nhắn bắt đầu + lead. Dữ liệu cập nhật lúc ${new Date(d.fetchedAt).toLocaleString("vi-VN")} · bấm ↻ Cập nhật để tải mới.</p>`;
+}
+function renderDailySpend() {
+  const d = state.adsData;
+  const y = state.month.getFullYear(), m = state.month.getMonth();
+  const daysIn = new Date(y, m + 1, 0).getDate();
+  const byDay = {};
+  for (const row of d.daily) byDay[row.date_start] = row;
+  const days = [];
+  for (let day = 1; day <= daysIn; day++) {
+    const row = byDay[isoDay(new Date(y, m, day))];
+    days.push({ day, spend: row ? +row.spend || 0 : 0,
+      msgs: row ? actVal(row.actions, MSG_ACTION) : 0,
+      leads: row ? leadVal(row.actions) : 0 });
+  }
+  const max = Math.max(...days.map(x => x.spend), 1);
+  if (!days.some(x => x.spend > 0)) return `<div class="empty">Không có chi tiêu trong tháng này.</div>`;
+  return `<div class="bars">${days.map(x =>
+    `<div class="b ${x.spend ? "" : "zero"}" style="height:${Math.max(2, Math.round(x.spend / max * 100))}%"
+      title="${x.day}/${m + 1}: ${fmtMoney(x.spend)} · ${x.msgs} tin nhắn · ${x.leads} lead"></div>`).join("")}</div>
+  <div class="barlabels">${days.map(x =>
+    `<span>${x.day === 1 || x.day % 5 === 0 ? x.day : ""}</span>`).join("")}</div>`;
+}
+function renderCampaignsTable() {
+  const rows = [...state.adsData.campaigns].sort((a, b) => (+b.spend || 0) - (+a.spend || 0));
+  const acctAvg = adTotals(state.adsData).costPerKq; // trung bình tài khoản làm chuẩn cảnh báo
+  return `<div class="tablewrap"><table>
+    <thead><tr><th>Chiến dịch</th><th>Trạng thái</th>
+      <th class="num">Chi tiêu</th><th class="num">Tin nhắn</th><th class="num">Lead</th>
+      <th class="num">Chi phí/KQ</th><th class="num">Tiếp cận</th></tr></thead>
+    <tbody>${rows.map(c => {
+      const spend = +c.spend || 0;
+      const msgs = actVal(c.actions, MSG_ACTION), leads = leadVal(c.actions);
+      const kq = msgs + leads;
+      const cpk = kq ? spend / kq : null;
+      const st = c.meta?.effective_status;
+      const stLabel = st === "ACTIVE" ? "Đang chạy" : st === "PAUSED" ? "Tạm dừng"
+        : st === "CAMPAIGN_PAUSED" ? "Tạm dừng" : (st || "—");
+      // Cảnh báo: chi phí/KQ vượt 130% trung bình tài khoản, hoặc tiêu >200k mà không có kết quả
+      const costWarn = (cpk != null && acctAvg && cpk > acctAvg * 1.3) || (kq === 0 && spend > 200000);
+      const cpkCell = cpk != null ? fmtMoney(cpk) : (spend > 0 ? "—" : "");
+      return `<tr>
+        <td>${esc(c.campaign_name)}</td>
+        <td><span class="stt ${st === "ACTIVE" ? "on" : ""}"><span class="dt"></span>${stLabel}</span></td>
+        <td class="num">${fmtMoney(spend)}</td>
+        <td class="num">${fmtNum(msgs)}</td>
+        <td class="num">${fmtNum(leads)}</td>
+        <td class="num" ${costWarn ? `style="color:var(--critical);font-weight:700;" title="⚠ Vượt 130% chi phí/KQ trung bình của tài khoản (${fmtMoney(acctAvg)})"` : ""}>${costWarn ? "⚠ " : ""}${cpkCell}</td>
+        <td class="num">${fmtNum(+c.reach || null)}</td>
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+/* ---------- Tab Tin nhắn ---------- */
+function renderInboxTab() {
+  if (state.inboxLoading) return `<div class="loading"><span class="spin"></span>Đang quét hộp thư ${monthLabel(state.month)}…</div>`;
+  if (state.inboxError) return `<div class="notice err"><b>Không đọc được hộp thư:</b> ${esc(state.inboxError.message)}<br>Cần quyền <code>pages_messaging</code>.</div>`;
+  const d = state.inboxData;
+  if (!d) return `<div class="empty">Chưa có dữ liệu.</div>`;
+  const maxB = Math.max(...d.buckets.map(b => b.n), 1);
+  return `
+  ${d.partial ? `<div class="notice">Hộp thư nhiều hơn ${d.scanned} hội thoại — số liệu tính trên ${d.scanned} hội thoại gần nhất.</div>` : ""}
+  <div class="tiles">
+    <div class="tile"><div class="k">Hội thoại có hoạt động</div><div class="v">${fmtNum(d.convActive)}</div></div>
+    <div class="tile"><div class="k">Hội thoại mới</div><div class="v">${fmtNum(d.convNew)}</div></div>
+    <div class="tile"><div class="k">Tin khách gửi</div><div class="v">${fmtNum(d.msgsIn)}</div></div>
+    <div class="tile"><div class="k">Tin page trả lời</div><div class="v">${fmtNum(d.msgsOut)}</div></div>
+    <div class="tile"><div class="k">Phản hồi trung bình</div><div class="v" style="font-size:22px">${fmtDur(d.avgResp)}</div>
+      <div class="d">trung vị ${fmtDur(d.medResp)} · ${d.respCount} lượt</div></div>
+    <div class="tile"><div class="k">Đang chờ trả lời</div>
+      <div class="v" ${d.awaiting.length ? 'style="color:var(--critical)"' : ""}>${d.awaiting.length}</div>
+      ${d.awaiting.length ? `<div class="d" style="color:var(--critical)">cần xử lý ngay</div>` : `<div class="d up">✓ đã trả lời hết</div>`}</div>
+  </div>
+  <div class="cols">
+    <div class="card">
+      <h2>Tốc độ phản hồi <span class="hint">— số lượt trả lời theo thời gian chờ của khách</span></h2>
+      <div class="vchart">${d.buckets.map(b => `
+        <div class="col" title="${b.label}: ${b.n} lượt">
+          <span class="val">${b.n}</span>
+          <div class="bar ${b.n ? "" : "none"}" style="height:${Math.max(3, Math.round(b.n / maxB * 100))}px"></div>
+          <span class="lbl">${b.label}</span>
+        </div>`).join("")}</div>
+    </div>
+    <div class="card">
+      <h2>⏳ Khách đang chờ trả lời (${d.awaiting.length})</h2>
+      ${d.awaiting.length ? `<div class="tablewrap"><table>
+        <thead><tr><th>Khách</th><th>Đã chờ</th><th></th></tr></thead>
+        <tbody>${d.awaiting.map(a => `<tr>
+          <td>${esc(a.name)}${a.unread ? ` <span class="badge" style="color:var(--critical)">${a.unread} chưa đọc</span>` : ""}</td>
+          <td style="color:${Date.now() - a.since > 4 * 3600e3 ? "var(--critical)" : "var(--text-secondary)"}">${fmtDur(Date.now() - a.since)}</td>
+          <td>${a.link ? `<a href="https://facebook.com${esc(a.link)}" target="_blank">Mở</a>` : ""}</td>
+        </tr>`).join("")}</tbody></table></div>` : `<div class="empty">Không có khách nào đang chờ 🎉</div>`}
+    </div>
+  </div>
+  <p class="updated">Tính từ 25 tin gần nhất của mỗi hội thoại, ${d.scanned} hội thoại gần nhất. Facebook API không cho biết nhân viên nào trả lời — thời gian phản hồi là số chung của page. Cập nhật ${new Date(d.fetchedAt).toLocaleString("vi-VN")}.</p>`;
+}
+
+/* ---------- Tab Xu hướng ---------- */
+function renderTrendsTab() {
+  const bar = `<div class="toolbar" style="margin-bottom:14px;">
+    <div class="seg">
+      <button class="${state.trendMode === "week" ? "active" : ""}" data-mode="week">Theo tuần (${TREND_WEEKS} tuần)</button>
+      <button class="${state.trendMode === "month" ? "active" : ""}" data-mode="month">Theo tháng (${TREND_MONTHS} tháng)</button>
+    </div>
+  </div>`;
+  if (state.trendLoading) return bar + `<div class="loading"><span class="spin"></span>Đang tổng hợp ${TREND_MONTHS} tháng dữ liệu — lần đầu có thể mất 10–20 giây…</div>`;
+  if (state.trendError) return bar + `<div class="notice err"><b>Không tải được dữ liệu xu hướng:</b> ${esc(state.trendError.message)}</div>`;
+  if (!state.trendData) return bar + `<div class="empty">Chưa có dữ liệu.</div>`;
+  const rows = state.trendMode === "week" ? state.trendData.weeks : state.trendData.months;
+  const hasAds = rows.some(r => r.spend != null);
+  const hasReach = rows.some(r => r.reach != null);
+  return bar + `
+  <div class="cols">
+    <div class="card"><h2>📄 Số bài đăng</h2>${vchart(rows, "posts", v => String(v))}</div>
+    <div class="card"><h2>📄 Tiếp cận bài viết</h2>${hasReach ? vchart(rows, "reach", fmtCompact)
+      : `<div class="empty">Chưa có dữ liệu tiếp cận (cần quyền read_insights).</div>`}</div>
+    ${hasAds ? `
+    <div class="card"><h2>📣 Chi tiêu quảng cáo</h2>${vchart(rows, "spend", fmtCompact)}</div>
+    <div class="card"><h2>📣 Kết quả (tin nhắn + lead)</h2>${vchart(rows, "kq", v => String(v))}</div>
+    <div class="card"><h2>📣 Chi phí / kết quả <span class="hint">— thấp hơn là tốt</span></h2>${vchart(rows, "costPerKq", fmtCompact)}</div>
+    ` : `<div class="card"><div class="notice">Chưa có dữ liệu quảng cáo — kết nối token có quyền <code>ads_read</code> để xem chi tiêu, kết quả theo ${state.trendMode === "week" ? "tuần" : "tháng"}.</div></div>`}
+    ${rows.some(r => r.stories != null) ? `<div class="card"><h2>📄 Số story</h2>${vchart(rows, "stories", v => String(v))}</div>` : ""}
+  </div>
+  ${renderTrendTable(rows)}
+  ${renderTrendInsights(rows)}
+  <p class="updated">${state.trendMode === "week" ? "Tuần tính từ Thứ 2, nhãn = ngày đầu tuần." : "6 tháng gần nhất, tính cả tháng hiện tại (chưa trọn tháng)."} Tổng hợp lúc ${new Date(state.trendData.fetchedAt).toLocaleString("vi-VN")}.</p>`;
+}
+function renderTrendTable(rows) {
+  const hasAds = rows.some(r => r.spend != null);
+  return `<div class="card"><h2>Bảng số liệu <span class="hint">— mới nhất trên cùng</span></h2>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Kỳ</th><th class="num">Bài đăng</th><th class="num">Story</th>
+      ${hasAds ? `<th class="num">Chi tiêu</th><th class="num">Kết quả</th><th class="num">Chi phí/KQ</th>` : ""}</tr></thead>
+    <tbody>${[...rows].reverse().map((r, i) => `<tr${i === 0 ? ` style="color:var(--text-secondary)" title="Kỳ hiện tại chưa trọn"` : ""}>
+      <td>${r.label}${i === 0 ? " *" : ""}</td>
+      <td class="num">${fmtNum(r.posts)}</td>
+      <td class="num">${fmtNum(r.stories)}</td>
+      ${hasAds ? `<td class="num">${r.spend != null ? fmtMoney(r.spend) : "—"}</td>
+      <td class="num">${fmtNum(r.kq)}</td>
+      <td class="num">${r.costPerKq != null ? fmtMoney(r.costPerKq) : "—"}</td>` : ""}
+    </tr>`).join("")}</tbody>
+  </table></div>
+  <p class="updated" style="margin-top:8px;">* kỳ hiện tại chưa kết thúc.</p></div>`;
+}
+function renderTrendInsights(rows) {
+  const label = state.trendMode === "week" ? "tuần" : "tháng";
+  const nice = r => label + " " + (state.trendMode === "week" ? r.label : r.label.replace(/^T/, ""));
+  // Kỳ hiện tại chưa trọn — loại khỏi so sánh tốt/tệ nhất
+  const done = rows.slice(0, -1);
+  const out = [];
+  const withPosts = done.filter(r => r.posts != null);
+  if (withPosts.length >= 2) {
+    const best = withPosts.reduce((a, b) => (b.posts > a.posts ? b : a));
+    const worst = withPosts.reduce((a, b) => (b.posts < a.posts ? b : a));
+    if (best.posts !== worst.posts)
+      out.push(`Đăng nhiều nhất: <b>${nice(best)}</b> (${best.posts} bài) — ít nhất: <b>${nice(worst)}</b> (${worst.posts} bài).`);
+    const half = Math.floor(withPosts.length / 2);
+    if (half >= 1) {
+      const avg = a => a.reduce((s, r) => s + r.posts, 0) / a.length;
+      const a1 = avg(withPosts.slice(0, half)), a2 = avg(withPosts.slice(-half));
+      const pct = a1 > 0 ? Math.round((a2 - a1) / a1 * 100) : 0;
+      if (Math.abs(pct) >= 15)
+        out.push(`Nhịp đăng bài <b>${pct > 0 ? "đang tăng" : "đang giảm"} ~${Math.abs(pct)}%</b> so với giai đoạn trước.`);
+    }
+  }
+  const withKq = done.filter(r => r.kq > 0 && r.costPerKq != null);
+  if (withKq.length >= 2) {
+    const bestC = withKq.reduce((a, b) => (b.costPerKq < a.costPerKq ? b : a));
+    const worstC = withKq.reduce((a, b) => (b.costPerKq > a.costPerKq ? b : a));
+    if (bestC !== worstC)
+      out.push(`Chi phí/kết quả rẻ nhất: <b>${nice(bestC)}</b> (${fmtCompact(bestC.costPerKq)} ₫) — đắt nhất: <b>${nice(worstC)}</b> (${fmtCompact(worstC.costPerKq)} ₫).`);
+  }
+  if (!out.length) return "";
+  return `<div class="card"><h2>💡 Nhận xét tự động <span class="hint">— không tính ${label} hiện tại chưa trọn</span></h2>
+    <ul style="margin-left:18px;color:var(--text-secondary);">${out.map(x => `<li style="margin-bottom:4px;">${x}</li>`).join("")}</ul></div>`;
+}
+function vchart(rows, key, fmt) {
+  const H = 100; // px vùng cột
+  const max = Math.max(...rows.map(r => r[key] || 0), 1);
+  return `<div class="vchart">${rows.map(r => {
+    const v = r[key];
+    const h = v == null || v === 0 ? 2 : Math.max(3, Math.round(v / max * H));
+    return `<div class="col" title="${r.label}: ${v == null ? "không có dữ liệu" : fmt(v)}">
+      <span class="val">${v == null ? "—" : fmt(v)}</span>
+      <div class="bar ${v == null ? "none" : ""}" style="height:${h}px"></div>
+      <span class="lbl">${r.label}</span>
+    </div>`;
+  }).join("")}</div>`;
+}
+function bindTrends() {
+  document.querySelectorAll(".seg button").forEach(el =>
+    el.onclick = () => { state.trendMode = el.dataset.mode; render(); });
+}
+
+function bindAds() {
+  const sel = document.getElementById("adAcctSel");
+  if (sel) sel.onchange = () => {
+    state.adAccount = state.adAccounts.find(a => a.id === sel.value);
+    save(LS.adSelected, state.adAccount);
+    state.adsData = null; state.adsMonth = null;
+    loadAds();
+  };
+  const btn = document.getElementById("adsTokenBtn");
+  if (btn) btn.onclick = () => {
+    const t = (document.getElementById("adsTokenInput") || {}).value;
+    if (t && t.trim()) saveAdsToken(t.trim());
+  };
+  const clr = document.getElementById("adsTokenClear");
+  if (clr) clr.onclick = clearAdsToken;
+}
+
+/* ---------- Init ---------- */
+// Backfill mốc thời gian token cho phiên đã kết nối trước khi có tính năng này
+if (load(LS.userToken) && !load(LS.tokenAt)) save(LS.tokenAt, Date.now());
+if (state.page) { loadDashboard(); ensurePagesList(); }
+else { state.view = "setup"; render(); }
+</script>
+</body>
+</html>
