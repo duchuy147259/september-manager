@@ -100,6 +100,10 @@
 
   /* ---------- Header ---------- */
   header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .chu-dau { display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
+    color: #fff; font-weight: 700; font-size: 13px; flex: none; }
+  header .avatar.chu-dau { width: 44px; height: 44px; font-size: 19px; }
   header img.avatar { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--border); }
   header .pageinfo { flex: 1; min-width: 180px; }
   header .pageinfo h1 { font-size: 20px; font-weight: 700; font-family: var(--display); letter-spacing: .2px; }
@@ -510,6 +514,19 @@ const AM = {
   },
 };
 
+/* ---------- Ảnh đại diện page ----------
+   Link ảnh trong /me/accounts trỏ vào CDN scontent có chữ ký HẾT HẠN sau vài ngày
+   → lưu vào localStorage rồi mở lại là vỡ ảnh. Dùng endpoint Graph theo page id,
+   URL này ổn định vĩnh viễn. Ảnh lỗi thì thay bằng chữ cái đầu tên page. */
+function anhPage(id) { return `${GRAPH}/${id}/picture?type=square&width=96`; }
+function chuDau(ten) { return esc((ten || "?").trim().charAt(0).toUpperCase()); }
+function avatarHTML(page, cls) {
+  if (!page || !page.id) return "";
+  const c = cls ? ` class="${cls}"` : "";
+  return `<img${c} src="${anhPage(page.id)}" alt="" loading="lazy"
+    onerror="this.outerHTML='<span${cls ? ` class=&quot;${cls} chu-dau&quot;` : ' class=&quot;chu-dau&quot;'}>${chuDau(page.name)}</span>'">`;
+}
+
 /* ---------- Graph API ---------- */
 async function gfetch(path, params) {
   const url = new URL(GRAPH + path);
@@ -565,7 +582,7 @@ async function fetchMonthData(page, month, { force = false, skipStories = false 
   const baseFields = "id,message,story,created_time,permalink_url,status_type," +
     "attachments{media_type,type},shares";
   const engFields = baseFields + ",comments.summary(true).limit(0),reactions.summary(true).limit(0)";
-  const insFields = engFields + ",insights.metric(post_impressions_unique,post_impressions){name,values}";
+  const insFields = engFields + ",insights.metric(post_clicks,post_video_views){name,values}";
   const tiers = [insFields, engFields, baseFields];
   let startTier = load(LS.fieldsTier);
   // Chú ý: null >= 0 là true trong JS — phải kiểm tra Number.isInteger
@@ -612,12 +629,12 @@ async function fetchMonthData(page, month, { force = false, skipStories = false 
   // Chuẩn hóa
   const liveIds = new Set(lives.map(v => v.id));
   const normPosts = posts.map(p => {
-    let reach = null, impressions = null;
+    let clicks = null, views = null;
     if (p.insights && p.insights.data) {
       for (const m of p.insights.data) {
         const v = m.values && m.values[0] && m.values[0].value;
-        if (m.name === "post_impressions_unique") reach = v;
-        if (m.name === "post_impressions") impressions = v;
+        if (m.name === "post_clicks") clicks = v;
+        if (m.name === "post_video_views") views = v;
       }
     }
     const mediaType = p.attachments && p.attachments.data && p.attachments.data[0]
@@ -627,7 +644,7 @@ async function fetchMonthData(page, month, { force = false, skipStories = false 
     const post = {
       id: p.id, message: p.message || p.story || "", created_time: p.created_time,
       permalink_url: p.permalink_url, status_type: p.status_type, mediaType,
-      reach, impressions, isLive,
+      clicks, views, isLive,
       reactions: p.reactions?.summary?.total_count ?? 0,
       comments: p.comments?.summary?.total_count ?? 0,
       shares: p.shares?.count ?? 0,
@@ -830,7 +847,7 @@ async function loadTrends(force = false) {
         return {
           label: "T" + (m.getMonth() + 1) + (m.getMonth() === 0 || i === 0 ? "/" + String(m.getFullYear()).slice(2) : ""),
           posts: pd ? pd.posts.length : null,
-          reach: pd ? sumReach(pd.posts) : null,
+          reach: pd ? sumClicks(pd.posts) : null,
           stories: storiesInMonth(m),
           spend: t ? t.spend : null,
           kq: t ? t.kq : null,
@@ -864,7 +881,7 @@ function buildWeeks(pageRes, adsRes, storiesAll) {
       : null;
     weeks.push({
       label: start.getDate() + "/" + (start.getMonth() + 1),
-      posts: posts.length, reach: sumReach(posts), stories,
+      posts: posts.length, reach: sumClicks(posts), stories,
       spend, kq, costPerKq: kq ? spend / kq : null,
     });
   }
@@ -996,7 +1013,7 @@ function downloadCSV(rows, name) {
 function exportCSV() {
   if (state.tab === "trend") {
     if (!state.trendData) return;
-    const rows = [["Kỳ","Bài đăng","Tiếp cận","Story","Chi tiêu (₫)","Kết quả (TN+lead)","Chi phí/KQ (₫)"]];
+    const rows = [["Kỳ","Bài đăng","Click","Story","Chi tiêu (₫)","Kết quả (TN+lead)","Chi phí/KQ (₫)"]];
     for (const r of (state.trendMode === "week" ? state.trendData.weeks : state.trendData.months)) {
       rows.push([r.label, r.posts ?? "", r.reach ?? "", r.stories ?? "",
         r.spend != null ? Math.round(r.spend) : "", r.kq ?? "",
@@ -1018,11 +1035,11 @@ function exportCSV() {
     return;
   }
   if (!state.data) return;
-  const rows = [["Thời gian","Phân loại","Nội dung","Loại media","Tiếp cận","Cảm xúc","Bình luận","Chia sẻ","Link"]];
+  const rows = [["Thời gian","Phân loại","Nội dung","Loại media","Click","Cảm xúc","Bình luận","Chia sẻ","Link"]];
   for (const p of state.data.posts) {
     rows.push([fmtDate(p.created_time), catOf(p.category).name,
       (p.message || "").replace(/\s+/g, " ").slice(0, 300), p.mediaType || "",
-      p.reach ?? "", p.reactions, p.comments, p.shares, p.permalink_url || ""]);
+      p.clicks ?? "", p.reactions, p.comments, p.shares, p.permalink_url || ""]);
   }
   downloadCSV(rows, "fanpage-" + ymKey(state.month) + ".csv");
 }
@@ -1094,7 +1111,7 @@ function renderSidebar() {
   return `<aside class="sidebar">
     <div class="sblabel">FANPAGE (${pages.length})</div>
     ${pages.map(p => `<div class="pageitem ${state.page && p.id === state.page.id ? "active" : ""}" data-pid="${esc(p.id)}" title="${esc(p.name)}">
-      ${p.picture ? `<img src="${esc(p.picture)}" alt="">` : ""}
+      ${avatarHTML(p)}
       <div class="pi-meta"><div class="pi-name">${esc(p.name)}</div>
       <div class="pi-likes">${fmtNum(p.fan_count)} lượt thích</div></div>
     </div>`).join("")}
@@ -1189,7 +1206,7 @@ function renderSetup() {
       <div class="pagelist">
         ${state.foundPages.map((p, i) => `
           <div class="pagecard" data-idx="${i}">
-            <img src="${esc(p.picture?.data?.url || "")}" alt="">
+            ${avatarHTML(p)}
             <div><div class="nm">${esc(p.name)}</div>
             <div class="ct">${esc(p.category || "")} · ${fmtNum(p.fan_count)} lượt thích</div></div>
           </div>`).join("")}
@@ -1213,7 +1230,7 @@ function renderHeader() {
   const isCurrent = ymKey(state.month) === ymKey(new Date());
   return `
   <header>
-    ${p.picture ? `<img class="avatar" src="${esc(p.picture)}" alt="">` : ""}
+    ${avatarHTML(p, "avatar")}
     <div class="pageinfo">
       <h1>${esc(p.name)}</h1>
       <div class="sub">${p.fan_count ? fmtNum(p.fan_count) + " lượt thích · " : ""}${isStaff() ? "Chế độ nhân viên" : "Quản lý fanpage & quảng cáo"}</div>
@@ -1444,8 +1461,8 @@ function buildReport() {
     lines.push("", "— FANPAGE —",
       `• Bài đăng: ${d.posts.length}`,
       `• Story: ${d.storiesError ? "?" : d.stories.length} · Live: ${d.lives.length}`);
-    const reach = sumReach(d.posts);
-    if (reach != null) lines.push(`• Tiếp cận: ${fmtNum(reach)}`);
+    const reach = sumClicks(d.posts);
+    if (reach != null) lines.push(`• Lượt click: ${fmtNum(reach)}`);
     if (engage) lines.push(`• Tương tác: ${fmtNum(engage)}`);
   }
   if (!isStaff() && state.adAccount && state.adsData && state.adsMonth === ym) {
@@ -1480,9 +1497,9 @@ async function copyReport() {
   }
 }
 
-function sumReach(posts) {
+function sumClicks(posts) {
   let has = false, sum = 0;
-  for (const p of posts) if (p.reach != null) { has = true; sum += p.reach; }
+  for (const p of posts) if (p.clicks != null) { has = true; sum += p.clicks; }
   return has ? sum : null;
 }
 function delta(cur, prev, unit) {
@@ -1497,14 +1514,14 @@ function renderDashboard() {
   const d = state.data;
   const posts = d.posts;
   const prev = state.prevData;
-  const totalReach = sumReach(posts);
+  const totalReach = sumClicks(posts);
   const avgReach = totalReach != null && posts.length ? Math.round(totalReach / posts.length) : null;
   const engage = posts.reduce((s, p) => s + p.reactions + p.comments + p.shares, 0);
-  const prevReach = prev ? sumReach(prev.posts) : null;
+  const prevReach = prev ? sumClicks(prev.posts) : null;
   const prevEngage = prev ? prev.posts.reduce((s, p) => s + p.reactions + p.comments + p.shares, 0) : null;
 
   return `
-  ${!d.insightsOk ? `<div class="notice">Không đọc được <b>lượt tiếp cận</b> — Meta đã gỡ metric tiếp cận per-bài khỏi API mới, hoặc token thiếu <code>read_insights</code>. Các số liệu khác vẫn hiển thị.</div>` : ""}
+  ${!d.insightsOk ? `<div class="notice">Token thiếu quyền <code>read_insights</code> nên không đọc được <b>lượt click</b> từng bài. Các số liệu khác vẫn hiển thị.</div>` : ""}
   ${d.engagementOk === false ? `<div class="notice">Token thiếu quyền <code>pages_read_user_content</code> nên <b>cảm xúc & bình luận</b> không đọc được — cột Tương tác hiện chỉ gồm lượt <b>chia sẻ</b>.</div>` : ""}
   ${renderKpiCard()}
   ${d.storiesError ? `<div class="notice">Không đọc được <b>Story</b>: ${esc(d.storiesError)} — cần quyền <code>pages_manage_posts</code>. Lưu ý: API chỉ trả về story còn trong hệ thống.</div>` : ""}
@@ -1513,8 +1530,8 @@ function renderDashboard() {
     <div class="tile"><div class="k">Bài đăng</div><div class="v">${posts.length}</div>${prev ? delta(posts.length, prev.posts.length, " bài") : ""}</div>
     <div class="tile"><div class="k">Story</div><div class="v">${d.storiesError ? "—" : d.stories.length}</div>${prev && !d.storiesError && !prev.storiesError ? delta(d.stories.length, prev.stories.length) : ""}</div>
     <div class="tile"><div class="k">Live</div><div class="v">${d.lives.length}</div>${prev ? delta(d.lives.length, prev.lives.length) : ""}</div>
-    <div class="tile"><div class="k">Tổng tiếp cận</div><div class="v">${fmtNum(totalReach)}</div>${delta(totalReach, prevReach)}</div>
-    <div class="tile"><div class="k">TB tiếp cận / bài</div><div class="v">${fmtNum(avgReach)}</div></div>
+    <div class="tile"><div class="k">Tổng lượt click</div><div class="v">${fmtNum(totalReach)}</div>${delta(totalReach, prevReach)}</div>
+    <div class="tile"><div class="k">TB click / bài</div><div class="v">${fmtNum(avgReach)}</div></div>
     <div class="tile"><div class="k">Tổng tương tác</div><div class="v">${fmtNum(engage)}</div>${delta(engage, prevEngage)}</div>
   </div>
 
@@ -1596,11 +1613,11 @@ function renderContentBreakdown() {
   const items = CATEGORIES.filter(c => counts[c.key]).sort((a, b) => counts[b.key] - counts[a.key]);
   return items.map(c => {
     const n = counts[c.key];
-    const reach = sumReach(posts.filter(p => p.category === c.key));
+    const reach = sumClicks(posts.filter(p => p.category === c.key));
     return `<div class="cbar">
       <div class="row1">
         <span class="name"><span class="sw" style="background:${c.color}"></span>${c.name}</span>
-        <span class="val">${n} bài${reach != null ? " · " + fmtNum(reach) + " tiếp cận" : ""}</span>
+        <span class="val">${n} bài${reach != null ? " · " + fmtNum(reach) + " click" : ""}</span>
       </div>
       <div class="track"><div class="fill" style="width:${Math.round(n / max * 100)}%;background:${c.color}"></div></div>
     </div>`;
@@ -1611,7 +1628,7 @@ function renderPostsTable() {
   const posts = [...state.data.posts];
   const s = state.sortBy;
   posts.sort((a, b) => {
-    if (s === "reach") return (b.reach ?? -1) - (a.reach ?? -1);
+    if (s === "clicks") return (b.clicks ?? -1) - (a.clicks ?? -1);
     if (s === "engage") return (b.reactions + b.comments + b.shares) - (a.reactions + a.comments + a.shares);
     return new Date(b.created_time) - new Date(a.created_time);
   });
@@ -1620,7 +1637,7 @@ function renderPostsTable() {
     <thead><tr>
       <th class="sortable" data-sort="time">Thời gian${arrow("time")}</th>
       <th>Phân loại</th><th>Nội dung</th>
-      <th class="num sortable" data-sort="reach">Tiếp cận${arrow("reach")}</th>
+      <th class="num sortable" data-sort="clicks">Click${arrow("clicks")}</th>
       <th class="num sortable" data-sort="engage">Tương tác${arrow("engage")}</th>
       <th></th>
     </tr></thead>
@@ -1631,7 +1648,7 @@ function renderPostsTable() {
         <td style="white-space:nowrap">${fmtDate(p.created_time)}</td>
         <td><span class="badge"><span class="sw" style="background:${c.color}"></span>${c.name}</span></td>
         <td><div class="excerpt">${media ? media + " " : ""}${esc(p.message) || "<i>(không có caption)</i>"}</div></td>
-        <td class="num">${fmtNum(p.reach)}</td>
+        <td class="num">${fmtNum(p.clicks)}</td>
         <td class="num" title="${p.reactions} cảm xúc · ${p.comments} bình luận · ${p.shares} chia sẻ">${fmtNum(p.reactions + p.comments + p.shares)}</td>
         <td>${p.permalink_url ? `<a href="${esc(p.permalink_url)}" target="_blank">Xem</a>` : ""}</td>
       </tr>`;
@@ -1895,8 +1912,8 @@ function renderTrendsTab() {
   return bar + `
   <div class="cols">
     <div class="card"><h2>📄 Số bài đăng</h2>${vchart(rows, "posts", v => String(v))}</div>
-    <div class="card"><h2>📄 Tiếp cận bài viết</h2>${hasReach ? vchart(rows, "reach", fmtCompact)
-      : `<div class="empty">Chưa có dữ liệu tiếp cận (cần quyền read_insights).</div>`}</div>
+    <div class="card"><h2>📄 Lượt click bài viết</h2>${hasReach ? vchart(rows, "reach", fmtCompact)
+      : `<div class="empty">Chưa có dữ liệu click (token cần quyền read_insights).</div>`}</div>
     ${hasAds ? `
     <div class="card"><h2>📣 Chi tiêu quảng cáo</h2>${vchart(rows, "spend", fmtCompact)}</div>
     <div class="card"><h2>📣 Kết quả (tin nhắn + lead)</h2>${vchart(rows, "kq", v => String(v))}</div>
