@@ -438,6 +438,78 @@ function fmtDate(iso) {
 function esc(s) { return (s || "").replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[m])); }
 function monthLabel(d) { return "Tháng " + (d.getMonth() + 1) + "/" + d.getFullYear(); }
 
+/* ---------- Âm thanh thao tác ----------
+   Tự tổng hợp bằng Web Audio — không kèm file mp3, app vẫn là 1 file HTML.
+   Trình duyệt chỉ cho phát tiếng sau khi người dùng bấm, nên AudioContext
+   được tạo lười (lần bấm đầu tiên). Bật/tắt nhớ trong localStorage. */
+const AM = {
+  ctx: null,
+  bat() { return load("fp_am_thanh") !== false; },   // mặc định bật
+  dat(v) { save("fp_am_thanh", v); },
+  _ctx() {
+    if (!this.ctx) {
+      const C = window.AudioContext || window.webkitAudioContext;
+      if (!C) return null;
+      this.ctx = new C();
+    }
+    if (this.ctx.state === "suspended") this.ctx.resume();
+    return this.ctx;
+  },
+  _not(tanSo, treSau, dai, to = 0.05, dang = "sine") {
+    const c = this._ctx(); if (!c) return;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = dang; o.frequency.value = tanSo;
+    const t = c.currentTime + treSau;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(to, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dai);
+    o.connect(g); g.connect(c.destination);
+    o.start(t); o.stop(t + dai + 0.03);
+  },
+  // Mỗi thao tác một tiếng riêng, hướng âm khớp ý nghĩa:
+  // lùi/giảm → đi xuống, tiến/xong → đi lên, cảnh báo → quãng nghịch, lỗi → trầm rè.
+  choi(ten, so) {
+    if (!this.bat()) return;
+    try {
+      switch (ten) {
+        // — thao tác nhẹ —
+        case "click":      this._not(1180, 0, 0.05, 0.028); break;
+        // Mỗi tab một cao độ (Fanpage → Xu hướng): nghe là biết đang ở tab nào
+        case "tab":        this._not([587, 698, 784, 880][so || 0], 0, 0.08, 0.04); break;
+        case "chonPage":   this._not(659, 0, 0.07, 0.035); this._not(880, 0.06, 0.11, 0.035); break;
+
+        // — điều hướng tháng: lùi thì âm đi xuống, tới thì đi lên —
+        case "thangTruoc": this._not(700, 0, 0.06, 0.032); this._not(520, 0.05, 0.09, 0.032); break;
+        case "thangSau":   this._not(520, 0, 0.06, 0.032); this._not(700, 0.05, 0.09, 0.032); break;
+
+        // — tải dữ liệu —
+        case "batDauTai":  this._not(440, 0, 0.09, 0.03, "triangle"); break;
+        case "xong":       this._not(659, 0, 0.09, 0.04); this._not(988, 0.08, 0.15, 0.04); break;
+        // Xong mà mọi thứ đều ổn (không ai chờ, KPI đủ): hợp âm vui 3 nốt
+        case "xongVui":    this._not(523, 0, 0.09, 0.04); this._not(659, 0.075, 0.09, 0.04);
+                           this._not(880, 0.15, 0.22, 0.045); break;
+
+        // — cảnh báo: có khách đang chờ trả lời —
+        case "canhbao":    this._not(554, 0, 0.14, 0.05, "triangle");
+                           this._not(415, 0.13, 0.24, 0.05, "triangle"); break;
+        case "loi":        this._not(300, 0, 0.18, 0.055, "sawtooth");
+                           this._not(196, 0.16, 0.28, 0.05, "sawtooth"); break;
+
+        // — xuất/chép: CSV nghe như file rơi xuống, chép là 2 tách nhanh —
+        case "taiCSV":     this._not(880, 0, 0.07, 0.035); this._not(587, 0.06, 0.08, 0.035);
+                           this._not(392, 0.12, 0.16, 0.04); break;
+        case "chep":       this._not(1046, 0, 0.04, 0.03); this._not(1318, 0.055, 0.07, 0.03); break;
+
+        // — kết nối / ngắt —
+        case "ketNoi":     this._not(523, 0, 0.08, 0.04); this._not(659, 0.07, 0.08, 0.04);
+                           this._not(784, 0.14, 0.1, 0.04); this._not(1046, 0.21, 0.26, 0.045); break;
+        case "ngat":       this._not(784, 0, 0.08, 0.035); this._not(587, 0.07, 0.09, 0.035);
+                           this._not(392, 0.14, 0.2, 0.04); break;
+      }
+    } catch (e) { /* trình duyệt chặn — bỏ qua, không làm hỏng app */ }
+  },
+};
+
 /* ---------- Graph API ---------- */
 async function gfetch(path, params) {
   const url = new URL(GRAPH + path);
@@ -625,7 +697,9 @@ async function loadAds(force = false) {
   } catch (e) {
     state.adsError = e; state.adsData = null;
   }
-  state.adsLoading = false; render();
+  state.adsLoading = false;
+  AM.choi(state.adsError ? "loi" : "xong");
+  render();
 }
 
 /* ---------- Dữ liệu hộp thư Messenger ---------- */
@@ -718,7 +792,11 @@ async function loadInbox(force = false) {
     state.inboxData = await fetchInboxData(state.page, state.month, { force });
     state.inboxMonth = ymKey(state.month);
   } catch (e) { state.inboxError = e; state.inboxData = null; }
-  state.inboxLoading = false; render();
+  state.inboxLoading = false;
+  // Tin nhắn: còn khách chờ thì cảnh báo, trả lời hết rồi thì tiếng vui
+  if (state.inboxError) AM.choi("loi");
+  else if (state.inboxData) AM.choi(state.inboxData.awaiting.length ? "canhbao" : "xongVui");
+  render();
 }
 
 /* ---------- Dữ liệu xu hướng (6 tháng / 8 tuần) ---------- */
@@ -763,7 +841,9 @@ async function loadTrends(force = false) {
       fetchedAt: Date.now(),
     };
   } catch (e) { state.trendError = e; }
-  state.trendLoading = false; render();
+  state.trendLoading = false;
+  AM.choi(state.trendError ? "loi" : "xong");
+  render();
 }
 function buildWeeks(pageRes, adsRes, storiesAll) {
   const allPosts = pageRes.filter(Boolean).flatMap(d => d.posts);
@@ -836,6 +916,7 @@ async function connectWithUserToken(token) {
   render();
 }
 function selectPage(p) {
+  AM.choi("ketNoi");
   state.page = { id: p.id, name: p.name, access_token: p.access_token,
                  picture: p.picture?.data?.url, fan_count: p.fan_count, category: p.category };
   save(LS.selected, state.page);
@@ -867,6 +948,7 @@ async function loadDashboard(force = false) {
       state.setupMsg = { type: "err", text: "Token đã hết hạn hoặc bị thu hồi — vui lòng lấy token mới và kết nối lại." };
     }
   }
+  AM.choi(state.error ? "loi" : "xong");
   render();
 }
 function changeMonth(n) {
@@ -880,6 +962,7 @@ function changeMonth(n) {
 }
 function setTab(t) {
   if (state.tab === t) return;
+  AM.choi("tab", ["page", "ads", "inbox", "trend"].indexOf(t));
   state.tab = t;
   if (t === "ads") {
     if (isStaff()) { render(); return; }
@@ -894,6 +977,7 @@ function setTab(t) {
   render();
 }
 function disconnect() {
+  AM.choi("ngat");
   localStorage.removeItem(LS.selected);
   localStorage.removeItem(LS.adSelected);
   localStorage.removeItem(LS.pages);
@@ -1024,6 +1108,7 @@ function switchPage(pid) {
   if (state.page && state.page.id === pid) return;
   const p = (load(LS.pages) || []).find(x => x.id === pid);
   if (!p) return;
+  AM.choi("chonPage");
   state.page = p;
   save(LS.selected, p);
   // Dữ liệu là của page cũ — xóa hết, giữ nguyên tab đang xem
@@ -1140,6 +1225,7 @@ function renderHeader() {
     </div>
     <div class="toolbar">
       <button id="refreshBtn">↻ Cập nhật</button>
+      <button class="icon" id="amBtn" title="${AM.bat() ? "Tắt âm thanh" : "Bật âm thanh"}">${AM.bat() ? "🔊" : "🔇"}</button>
       <button id="reportBtn" title="Sao chép tóm tắt số liệu tháng (các tab đã mở) để dán vào Zalo/Messenger">📋 Báo cáo</button>
       <button id="csvBtn">⬇ CSV</button>
       <button id="disconnectBtn">Đổi page / token</button>
@@ -1148,15 +1234,23 @@ function renderHeader() {
 }
 function bindHeader() {
   const q = id => document.getElementById(id);
-  if (q("prevM")) q("prevM").onclick = () => changeMonth(-1);
-  if (q("nextM")) q("nextM").onclick = () => changeMonth(1);
-  if (q("refreshBtn")) q("refreshBtn").onclick = () =>
-    state.tab === "ads" ? loadAds(true)
-    : state.tab === "inbox" ? loadInbox(true)
-    : state.tab === "trend" ? loadTrends(true)
-    : loadDashboard(true);
-  if (q("csvBtn")) q("csvBtn").onclick = exportCSV;
-  if (q("reportBtn")) q("reportBtn").onclick = copyReport;
+  if (q("prevM")) q("prevM").onclick = () => { AM.choi("thangTruoc"); changeMonth(-1); };
+  if (q("nextM")) q("nextM").onclick = () => { AM.choi("thangSau"); changeMonth(1); };
+  if (q("refreshBtn")) q("refreshBtn").onclick = () => {
+    AM.choi("batDauTai");
+    return state.tab === "ads" ? loadAds(true)
+      : state.tab === "inbox" ? loadInbox(true)
+      : state.tab === "trend" ? loadTrends(true)
+      : loadDashboard(true);
+  };
+  if (q("csvBtn")) q("csvBtn").onclick = () => { AM.choi("taiCSV"); exportCSV(); };
+  if (q("reportBtn")) q("reportBtn").onclick = () => { AM.choi("chep"); copyReport(); };
+  if (q("amBtn")) q("amBtn").onclick = () => {
+    const moi = !AM.bat();
+    AM.dat(moi);
+    if (moi) AM.choi("ketNoi");   // bật thì kêu thử cho biết
+    render();
+  };
   if (q("tokenPermaBtn")) q("tokenPermaBtn").onclick = (e) => {
     e.preventDefault();
     save(LS.tokenPermanent, true);
