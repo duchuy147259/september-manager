@@ -100,6 +100,8 @@
 
   /* ---------- Header ---------- */
   header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .zsort { padding: 5px 11px; font-size: 12.5px; border-radius: 999px; }
+  .zsort.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .chu-dau { display: inline-flex; align-items: center; justify-content: center;
     width: 26px; height: 26px; border-radius: 50%; background: var(--accent);
     color: #fff; font-weight: 700; font-size: 13px; flex: none; }
@@ -399,6 +401,8 @@ let state = {
   adsError: null, adsLoading: false,
   trendData: null, trendLoading: false, trendError: null, trendMode: "month",
   inboxData: null, inboxLoading: false, inboxError: null, inboxMonth: null,
+  zaloData: null, zaloLoading: false, zaloError: null, zaloFetchedAt: null,
+  zaloSort: "cho",
   sortBy: "time",
   error: null,
   setupMsg: null,
@@ -969,7 +973,7 @@ async function loadDashboard(force = false) {
   render();
 }
 function changeMonth(n) {
-  if (state.tab === "trend") return; // tab Xu hướng luôn là 6 tháng gần nhất
+  if (state.tab === "trend" || state.tab === "zalo") return; // 2 tab này không theo tháng
   const next = addMonths(state.month, n);
   if (next > startOfMonth(new Date())) return;
   state.month = next;
@@ -979,7 +983,7 @@ function changeMonth(n) {
 }
 function setTab(t) {
   if (state.tab === t) return;
-  AM.choi("tab", ["page", "ads", "inbox", "trend"].indexOf(t));
+  AM.choi("tab", ["page", "ads", "inbox", "trend", "zalo"].indexOf(t));
   state.tab = t;
   if (t === "ads") {
     if (isStaff()) { render(); return; }
@@ -988,6 +992,8 @@ function setTab(t) {
     if (state.inboxMonth !== ymKey(state.month) && !state.inboxLoading) { loadInbox(); return; }
   } else if (t === "trend") {
     if (!state.trendData && !state.trendLoading) { loadTrends(); return; }
+  } else if (t === "zalo") {
+    if (!state.zaloData && !state.zaloLoading) { loadZalo(); return; }
   } else {
     if (state.page && state.dataMonth !== ymKey(state.month)) { loadDashboard(); return; }
   }
@@ -1053,6 +1059,8 @@ function render() {
     body = renderAdsTab();
   } else if (state.tab === "inbox") {
     body = renderInboxTab();
+  } else if (state.tab === "zalo") {
+    body = renderZaloTab();
   } else if (state.tab === "trend") {
     body = renderTrendsTab();
   } else if (state.view === "loading") {
@@ -1065,6 +1073,7 @@ function render() {
     `<div class="main">` + renderTabs() + tokenBanner() + body + `</div></div>`;
   bindHeader(); bindTabs(); bindSidebar();
   if (state.tab === "ads") bindAds();
+  else if (state.tab === "zalo") bindZalo();
   else if (state.tab === "trend") bindTrends();
   else if (state.view === "dashboard" && !state.error) { bindDashboard(); bindKpi(); }
   applyMotion();
@@ -1161,6 +1170,7 @@ function renderTabs() {
     <button class="${state.tab === "ads" ? "active" : ""}" data-tab="ads">📣 Quảng cáo${isStaff() ? " 🔒" : ""}</button>
     <button class="${state.tab === "inbox" ? "active" : ""}" data-tab="inbox">💬 Tin nhắn</button>
     <button class="${state.tab === "trend" ? "active" : ""}" data-tab="trend">📈 Xu hướng</button>
+    <button class="${state.tab === "zalo" ? "active" : ""}" data-tab="zalo">🟩 Zalo</button>
   </div>`;
 }
 function bindTabs() {
@@ -1257,6 +1267,7 @@ function bindHeader() {
     AM.choi("batDauTai");
     return state.tab === "ads" ? loadAds(true)
       : state.tab === "inbox" ? loadInbox(true)
+      : state.tab === "zalo" ? loadZalo(true)
       : state.tab === "trend" ? loadTrends(true)
       : loadDashboard(true);
   };
@@ -1893,6 +1904,218 @@ function renderInboxTab() {
     </div>
   </div>
   <p class="updated">Tính từ 25 tin gần nhất của mỗi hội thoại, ${d.scanned} hội thoại gần nhất. Facebook API không cho biết nhân viên nào trả lời — thời gian phản hồi là số chung của page. Cập nhật ${new Date(d.fetchedAt).toLocaleString("vi-VN")}.</p>`;
+}
+
+/* ---------- Tab Zalo ---------- */
+function zaloPhut(m) {
+  if (m == null) return "—";
+  return m < 60 ? (Math.round(m * 10) / 10).toLocaleString("vi-VN") + " phút"
+       : m < 1440 ? (Math.round(m / 60 * 10) / 10).toLocaleString("vi-VN") + " giờ"
+       : (Math.round(m / 1440 * 10) / 10).toLocaleString("vi-VN") + " ngày";
+}
+function zaloMauCho(m) {
+  return m == null ? "var(--text-secondary)"
+       : m <= 15 ? "var(--series-3)" : m <= 60 ? "var(--series-3)" : "var(--critical)";
+}
+function renderZaloTab() {
+  if (state.zaloLoading) return `<div class="loading"><span class="spin"></span>Đang đọc dữ liệu Zalo từ máy…</div>`;
+  if (state.zaloError || !state.zaloData) return renderZaloHuongDan();
+  const z = state.zaloData;
+  const t = z.totals || {};
+  const ov = (z.response || {}).overall || {};
+  const sat = (z.satisfaction || {}).overall || {};
+  const w = ov.within || {};
+  const traLoi = ov.replied || 0;
+  const moc = [5, 15, 60];
+  const nhom = ((z.response || {}).by_group || []).slice();
+  const sale = ((z.response || {}).by_sale || []).slice()
+    .sort((a, b) => (b.replied || 0) - (a.replied || 0));
+  const phanNan = (z.satisfaction || {}).complaints || [];
+  const gio = z.peak_hours || {};
+  const maxGio = Math.max(1, ...Object.values(gio).map(Number));
+  const sot = nhom.filter(g => g.unanswered).sort((a, b) => b.unanswered - a.unanswered);
+
+  // Sắp xếp bảng group
+  const sx = state.zaloSort;
+  nhom.sort((a, b) => {
+    if (sx === "cho") return (b.unanswered || 0) - (a.unanswered || 0) || (b.median_min ?? -1) - (a.median_min ?? -1);
+    if (sx === "cham") return (b.median_min ?? -1) - (a.median_min ?? -1);
+    if (sx === "traloi") return (b.replied || 0) - (a.replied || 0);
+    return String(a.group || "").localeCompare(String(b.group || ""), "vi");
+  });
+
+  const diem = sat.score;
+  const mauDiem = diem == null ? "var(--text-secondary)"
+    : diem >= 70 ? "var(--series-3)" : diem >= 45 ? "var(--series-2)" : "var(--critical)";
+
+  return `
+  <div class="tiles">
+    <div class="tile"><div class="k">Group theo dõi</div><div class="v">${fmtNum(t.groups)}</div>
+      <div class="d">${fmtNum(t.messages)} tin trong kỳ</div></div>
+    <div class="tile"><div class="k">Tin khách gửi</div><div class="v">${fmtNum(t.customer_msgs)}</div>
+      <div class="d">sale trả lời ${fmtNum(t.sale_msgs)}</div></div>
+    <div class="tile"><div class="k">Phản hồi trung vị</div>
+      <div class="v" style="font-size:24px;color:${zaloMauCho(ov.median_min)}">${zaloPhut(ov.median_min)}</div>
+      <div class="d">trung bình ${zaloPhut(ov.avg_min)} · ${traLoi} lượt</div></div>
+    <div class="tile"><div class="k">Khách bị bỏ sót</div>
+      <div class="v" ${ov.unanswered ? 'style="color:var(--critical)"' : ""}>${fmtNum(ov.unanswered || 0)}</div>
+      ${ov.unanswered ? `<div class="d" style="color:var(--critical)">chưa ai trả lời</div>`
+                      : `<div class="d up">✓ đã trả lời hết</div>`}</div>
+    <div class="tile"><div class="k">Điểm hài lòng</div>
+      <div class="v" style="color:${mauDiem}">${diem == null ? "—" : diem + "/100"}</div>
+      <div class="d">${esc(sat.score_reason || "")}</div></div>
+    <div class="tile"><div class="k">Tin khen / phàn nàn</div>
+      <div class="v" style="font-size:24px">${fmtNum(sat.positive || 0)} <span style="color:var(--text-secondary)">/</span>
+        <span style="color:var(--critical)">${fmtNum(sat.complaint || 0)}</span></div>
+      <div class="d">chấm bằng ${esc(sat.method || "—")}</div></div>
+  </div>
+
+  <div class="cols">
+    <div class="card">
+      <h2>Tốc độ trả lời <span class="hint">— tỉ lệ lượt khách được trả lời trong mốc thời gian</span></h2>
+      <div class="vchart">${moc.map(m => {
+        const n = w[m] || 0, tl = traLoi ? Math.round(n / traLoi * 100) : 0;
+        return `<div class="col" title="≤ ${m} phút: ${n}/${traLoi} lượt">
+          <span class="val">${tl}%</span>
+          <div class="bar ${n ? "" : "none"}" style="height:${Math.max(3, tl)}px"></div>
+          <span class="lbl">≤ ${m} phút</span></div>`;
+      }).join("")}
+        <div class="col" title="Chưa ai trả lời">
+          <span class="val" style="color:var(--critical)">${ov.unanswered || 0}</span>
+          <div class="bar none" style="height:3px"></div>
+          <span class="lbl">bỏ sót</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>👤 Theo nhân viên sale</h2>
+      ${sale.length ? `<div class="tablewrap"><table>
+        <thead><tr><th>Nhân viên</th><th class="num">Lượt trả lời</th><th class="num">Trung vị</th><th class="num">≤ 5 phút</th></tr></thead>
+        <tbody>${sale.map(x => {
+          const n5 = (x.within || {})["5"] || 0, r = x.replied || 0;
+          return `<tr><td>${esc(x.sale)}</td><td class="num">${fmtNum(r)}</td>
+            <td class="num" style="color:${zaloMauCho(x.median_min)}">${zaloPhut(x.median_min)}</td>
+            <td class="num">${r ? Math.round(n5 / r * 100) + "%" : "—"}</td></tr>`;
+        }).join("")}</tbody></table></div>` : `<div class="empty">Chưa có dữ liệu theo nhân viên.</div>`}
+    </div>
+  </div>
+
+  ${sot.length ? `<div class="card">
+    <h2 style="color:var(--critical)">⚠ Group có khách chưa được trả lời (${sot.length})</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Group</th><th class="num">Lượt bỏ sót</th><th>Sale phụ trách</th></tr></thead>
+      <tbody>${sot.map(g => `<tr>
+        <td>${esc(g.group)}</td>
+        <td class="num" style="color:var(--critical)"><b>${g.unanswered}</b></td>
+        <td>${esc((g.sales || []).join(", ") || "—")}</td></tr>`).join("")}</tbody></table></div>
+  </div>` : ""}
+
+  ${phanNan.length ? `<div class="card">
+    <h2>😟 Khách chưa hài lòng (${phanNan.length}) <span class="hint">— AI đọc và đánh dấu</span></h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Khi nào</th><th>Group</th><th>Khách</th><th>Nội dung</th><th>AI nhận định</th></tr></thead>
+      <tbody>${phanNan.map(c => `<tr>
+        <td style="white-space:nowrap;color:var(--text-secondary)">${c.ts ? fmtDate(c.ts) : "—"}</td>
+        <td>${esc(c.group)}</td><td>${esc(c.sender)}</td>
+        <td style="max-width:280px">${esc(c.text)}</td>
+        <td style="color:var(--text-secondary)">${esc(c.reason || "")}</td></tr>`).join("")}</tbody></table></div>
+  </div>` : ""}
+
+  <div class="cols">
+    <div class="card">
+      <h2>⏰ Giờ khách nhắn nhiều</h2>
+      <div class="vchart">${Array.from({ length: 24 }, (_, h) => {
+        const n = +gio[h] || 0;
+        return `<div class="col" title="${h}h: ${n} tin">
+          <div class="bar ${n ? "" : "none"}" style="height:${Math.max(2, Math.round(n / maxGio * 96))}px"></div>
+          <span class="lbl">${h % 3 === 0 ? h + "h" : ""}</span></div>`;
+      }).join("")}</div>
+    </div>
+    <div class="card">
+      <h2>💬 Tất cả group (${nhom.length})</h2>
+      <div class="toolbar" style="margin-bottom:10px">
+        ${[["cho", "Bỏ sót"], ["cham", "Chậm nhất"], ["traloi", "Nhiều lượt"], ["ten", "Tên"]]
+          .map(([k, v]) => `<button class="zsort ${sx === k ? "active" : ""}" data-zsort="${k}">${v}</button>`).join("")}
+      </div>
+      <div class="tablewrap" style="max-height:420px;overflow:auto">
+        <table><thead><tr><th>Group</th><th class="num">Trung vị</th><th class="num">Lượt</th><th class="num">Bỏ sót</th></tr></thead>
+        <tbody>${nhom.map(g => `<tr>
+          <td>${esc(g.group)}</td>
+          <td class="num" style="color:${zaloMauCho(g.median_min)}">${zaloPhut(g.median_min)}</td>
+          <td class="num">${fmtNum(g.replied || 0)}</td>
+          <td class="num" ${g.unanswered ? 'style="color:var(--critical)"' : ""}>${g.unanswered || 0}</td>
+        </tr>`).join("")}</tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <p class="updated">Nguồn: phần mềm Zalo Sale Monitor trên máy · dữ liệu tính tới ${
+    z.generated_at ? new Date(z.generated_at).toLocaleString("vi-VN") : "—"}
+    · sale nhận diện theo tên trong <code>config.json</code>. Dữ liệu chỉ đọc trong máy, không đẩy lên mạng.</p>`;
+}
+
+function bindZalo() {
+  document.querySelectorAll("[data-zsort]").forEach(el => el.onclick = () => {
+    AM.choi("click");
+    state.zaloSort = el.dataset.zsort;
+    render();
+  });
+}
+function renderZaloHuongDan() {
+  const tuXa = location.port !== String(ZALO_CONG);
+  return `<div class="card">
+    <h2>🟩 Zalo Sale Monitor chưa kết nối</h2>
+    <p style="color:var(--text-secondary);margin:8px 0 14px">
+      Dữ liệu Zalo có tên khách thật và nội dung tin nhắn nên <b>không được đẩy lên mạng</b> —
+      app đọc thẳng từ phần mềm chạy trên máy anh.</p>
+    <div class="notice">${esc((state.zaloError && state.zaloError.message) || "Không kết nối được")}</div>
+    <ol style="line-height:1.9;padding-left:20px">
+      <li>Mở phần mềm Zalo Sale Monitor trên máy (nó chạy nền, cổng ${ZALO_CONG}).</li>
+      <li>Vào <a href="http://127.0.0.1:${ZALO_CONG}" target="_blank">http://127.0.0.1:${ZALO_CONG}</a>
+          bấm <b>↻ Phân tích</b> một lần để có dữ liệu.</li>
+      ${tuXa ? `<li><b>Cách chắc ăn nhất:</b> mở app tại
+          <a href="http://127.0.0.1:${ZALO_CONG}/manager" target="_blank">http://127.0.0.1:${ZALO_CONG}/manager</a>
+          — cùng nguồn với phần mềm Zalo nên không bị trình duyệt chặn.</li>` : ""}
+      <li>Quay lại đây bấm <b>↻ Cập nhật</b>.</li>
+    </ol>
+    <p style="color:var(--text-secondary);font-size:13px;margin-top:12px">
+      Máy nhân viên xem được nếu chung Wi-Fi: mở <code>http://&lt;IP-máy-anh&gt;:${ZALO_CONG}/manager</code>.</p>
+  </div>`;
+}
+
+/* ---------- Dữ liệu Zalo Sale Monitor ----------
+   Dữ liệu Zalo có TÊN KHÁCH THẬT và nội dung phàn nàn nên KHÔNG đẩy lên web công khai.
+   App đọc thẳng từ phần mềm chạy trên máy (zalo-sale-monitor, cổng 8770):
+     1) Nếu app đang được mở TỪ chính máy đó (http://…:8770/manager) → gọi /api/report cùng nguồn.
+     2) Nếu mở từ GitHub Pages → thử gọi sang http://127.0.0.1:8770 (server đã bật CORS cho
+        đúng 2 tên miền của app). Chrome cần thêm Access-Control-Allow-Private-Network — đã bật.
+     3) Không thấy server → hướng dẫn bật, không báo lỗi đỏ. */
+const ZALO_CONG = 8770;
+function zaloNguon() {
+  // Mở ngay từ server Zalo (localhost hoặc IP nội bộ trong cùng Wi-Fi)
+  if (location.port === String(ZALO_CONG)) return ["/api/report"];
+  return [`http://127.0.0.1:${ZALO_CONG}/api/report`, `http://localhost:${ZALO_CONG}/api/report`];
+}
+async function loadZalo(force = false) {
+  if (state.zaloLoading) return;
+  if (state.zaloData && !force && Date.now() - state.zaloFetchedAt < 5 * 60 * 1000) { render(); return; }
+  state.zaloLoading = true; state.zaloError = null; render();
+  let loi = null;
+  for (const url of zaloNguon()) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const j = await res.json();
+      if (j && !j.empty && j.totals) {
+        state.zaloData = j; state.zaloFetchedAt = Date.now(); state.zaloError = null;
+        state.zaloLoading = false;
+        AM.choi((j.response?.overall?.unanswered || 0) ? "canhbao" : "xongVui");
+        render(); return;
+      }
+      loi = new Error("Phần mềm Zalo chưa có dữ liệu — bấm ↻ Phân tích trong dashboard Zalo một lần.");
+    } catch (e) { loi = e; }
+  }
+  state.zaloData = null; state.zaloError = loi || new Error("Không kết nối được");
+  state.zaloLoading = false; AM.choi("loi"); render();
 }
 
 /* ---------- Tab Xu hướng ---------- */
