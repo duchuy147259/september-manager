@@ -2065,6 +2065,12 @@ function bindZalo() {
     AM.choi("ketNoi");
     loadZalo(true);
   };
+  const doBtn = document.getElementById("zaloDoMay");
+  if (doBtn) doBtn.onclick = async () => {
+    AM.choi("batDauTai");
+    const ip = await zaloDoDiaChiMay();
+    if (ip) { AM.choi("ketNoi"); loadZalo(true); } else { AM.choi("loi"); render(); }
+  };
   document.querySelectorAll("[data-zsort]").forEach(el => el.onclick = () => {
     AM.choi("click");
     state.zaloSort = el.dataset.zsort;
@@ -2090,12 +2096,14 @@ function renderZaloHuongDan() {
       <div class="notice"><b>Anh đang mở app từ địa chỉ web (https).</b>
         Trình duyệt không cho trang web công khai đọc dữ liệu trong mạng nội bộ.
         Muốn xem Zalo trên máy này, phải mở app <b>bằng địa chỉ của máy chạy Zalo</b>:</div>
+      ${linkApp ? `<p style="margin:14px 0 8px"><a class="btn-link" href="${esc(linkApp)}">➜ Mở app từ máy Zalo</a>
+        <span style="color:var(--text-secondary);font-size:13px;margin-left:8px">${esc(may)}</span></p>` : ""}
       <div class="toolbar" style="margin:12px 0;flex-wrap:wrap">
         <span style="color:var(--text-secondary)">Địa chỉ máy chạy Zalo:</span>
         <input id="zaloMayInput" value="${esc(may || "192.168.1.10")}" placeholder="192.168.1.10"
           style="min-width:150px" inputmode="decimal">
         <button id="zaloLuuMay">Lưu</button>
-        ${linkApp ? `<a class="btn-link" href="${esc(linkApp)}">➜ Mở app từ máy Zalo</a>` : ""}
+        <button id="zaloDoMay">Dò lại</button>
       </div>
       ${linkApp ? `<p style="color:var(--text-secondary);font-size:13px">
         Mở <code>${esc(linkApp)}</code> — cùng Wi-Fi với máy anh là chạy.
@@ -2125,6 +2133,17 @@ function renderZaloHuongDan() {
      3) Không thấy server → hướng dẫn bật, không báo lỗi đỏ. */
 const ZALO_CONG = 8770;
 function zaloMay() { return (load("fp_zalo_may") || "").trim(); }
+/* Máy iMac tự đăng IP nội bộ của nó lên may.json cạnh app (script cap_nhat_dia_chi_may.py
+   chạy mỗi sáng). Nhờ vậy điện thoại luôn biết địa chỉ đúng dù router đổi IP. */
+async function zaloDoDiaChiMay() {
+  try {
+    const r = await fetch("may.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return null;
+    const j = await r.json();
+    if (j && j.ip && j.ip !== zaloMay()) { save("fp_zalo_may", j.ip); return j.ip; }
+    return j && j.ip || null;
+  } catch (e) { return null; }
+}
 function zaloDiaChiApp() { const m = zaloMay(); return m ? `http://${m}:${ZALO_CONG}/manager` : ""; }
 function zaloNguon() {
   // Đang mở NGAY TỪ server Zalo (localhost hoặc IP nội bộ) → gọi cùng nguồn, luôn chạy
@@ -2154,6 +2173,20 @@ async function loadZalo(force = false) {
       }
       loi = new Error("Phần mềm Zalo chưa có dữ liệu — bấm ↻ Phân tích trong dashboard Zalo một lần.");
     } catch (e) { loi = e; }
+  }
+  // Chưa được: hỏi may.json xem máy đang ở IP nào, nếu vừa biết thêm thì thử lại
+  const ipMoi = await zaloDoDiaChiMay();
+  if (ipMoi && location.protocol === "http:") {
+    try {
+      const res = await fetch(`http://${ipMoi}:${ZALO_CONG}/api/report`, { cache: "no-store" });
+      const j = res.ok ? await res.json() : null;
+      if (j && !j.empty && j.totals) {
+        state.zaloData = j; state.zaloFetchedAt = Date.now(); state.zaloError = null;
+        state.zaloLoading = false;
+        AM.choi((j.response?.overall?.unanswered || 0) ? "canhbao" : "xongVui");
+        render(); return;
+      }
+    } catch (e) { /* vẫn không được — rơi xuống màn hình hướng dẫn */ }
   }
   state.zaloData = null; state.zaloError = loi || new Error("Không kết nối được");
   state.zaloLoading = false; AM.choi("loi"); render();
