@@ -100,6 +100,8 @@
 
   /* ---------- Header ---------- */
   header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .btn-link { display:inline-block; padding:7px 14px; border-radius:999px;
+    background: var(--accent); color:#fff; text-decoration:none; font-size:13.5px; font-weight:600; }
   .zsort { padding: 5px 11px; font-size: 12.5px; border-radius: 999px; }
   .zsort.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   .chu-dau { display: inline-flex; align-items: center; justify-content: center;
@@ -2054,6 +2056,15 @@ function renderZaloTab() {
 }
 
 function bindZalo() {
+  const inp = document.getElementById("zaloMayInput");
+  const btn = document.getElementById("zaloLuuMay");
+  if (btn && inp) btn.onclick = () => {
+    const v = inp.value.trim().replace(/^https?:\/\//, "").replace(/[:/].*$/, "");
+    if (!v) return;
+    save("fp_zalo_may", v);
+    AM.choi("ketNoi");
+    loadZalo(true);
+  };
   document.querySelectorAll("[data-zsort]").forEach(el => el.onclick = () => {
     AM.choi("click");
     state.zaloSort = el.dataset.zsort;
@@ -2061,24 +2072,47 @@ function bindZalo() {
   });
 }
 function renderZaloHuongDan() {
-  const tuXa = location.port !== String(ZALO_CONG);
+  const tuMay = location.port === String(ZALO_CONG);      // đang mở từ chính server Zalo
+  const https = location.protocol === "https:";
+  const may = zaloMay();
+  const linkApp = zaloDiaChiApp();
+
+  // Trang https (GitHub Pages) trên máy KHÁC máy chạy Zalo → trình duyệt chặn, không cách nào lách.
+  const phaiDoiDiaChi = https && !tuMay;
+
   return `<div class="card">
     <h2>🟩 Zalo Sale Monitor chưa kết nối</h2>
     <p style="color:var(--text-secondary);margin:8px 0 14px">
-      Dữ liệu Zalo có tên khách thật và nội dung tin nhắn nên <b>không được đẩy lên mạng</b> —
+      Dữ liệu Zalo có tên khách thật và nội dung tin nhắn nên <b>không đẩy lên mạng</b> —
       app đọc thẳng từ phần mềm chạy trên máy anh.</p>
-    <div class="notice">${esc((state.zaloError && state.zaloError.message) || "Không kết nối được")}</div>
-    <ol style="line-height:1.9;padding-left:20px">
-      <li>Mở phần mềm Zalo Sale Monitor trên máy (nó chạy nền, cổng ${ZALO_CONG}).</li>
-      <li>Vào <a href="http://127.0.0.1:${ZALO_CONG}" target="_blank">http://127.0.0.1:${ZALO_CONG}</a>
-          bấm <b>↻ Phân tích</b> một lần để có dữ liệu.</li>
-      ${tuXa ? `<li><b>Cách chắc ăn nhất:</b> mở app tại
-          <a href="http://127.0.0.1:${ZALO_CONG}/manager" target="_blank">http://127.0.0.1:${ZALO_CONG}/manager</a>
-          — cùng nguồn với phần mềm Zalo nên không bị trình duyệt chặn.</li>` : ""}
-      <li>Quay lại đây bấm <b>↻ Cập nhật</b>.</li>
-    </ol>
-    <p style="color:var(--text-secondary);font-size:13px;margin-top:12px">
-      Máy nhân viên xem được nếu chung Wi-Fi: mở <code>http://&lt;IP-máy-anh&gt;:${ZALO_CONG}/manager</code>.</p>
+
+    ${phaiDoiDiaChi ? `
+      <div class="notice"><b>Anh đang mở app từ địa chỉ web (https).</b>
+        Trình duyệt không cho trang web công khai đọc dữ liệu trong mạng nội bộ.
+        Muốn xem Zalo trên máy này, phải mở app <b>bằng địa chỉ của máy chạy Zalo</b>:</div>
+      <div class="toolbar" style="margin:12px 0;flex-wrap:wrap">
+        <span style="color:var(--text-secondary)">Địa chỉ máy chạy Zalo:</span>
+        <input id="zaloMayInput" value="${esc(may || "192.168.1.10")}" placeholder="192.168.1.10"
+          style="min-width:150px" inputmode="decimal">
+        <button id="zaloLuuMay">Lưu</button>
+        ${linkApp ? `<a class="btn-link" href="${esc(linkApp)}">➜ Mở app từ máy Zalo</a>` : ""}
+      </div>
+      ${linkApp ? `<p style="color:var(--text-secondary);font-size:13px">
+        Mở <code>${esc(linkApp)}</code> — cùng Wi-Fi với máy anh là chạy.
+        Lưu địa chỉ này vào màn hình chính cho lần sau.</p>` : ""}
+    ` : `
+      <div class="notice">${esc((state.zaloError && state.zaloError.message) || "Không kết nối được")}</div>
+      <ol style="line-height:1.9;padding-left:20px">
+        <li>Kiểm tra phần mềm Zalo Sale Monitor còn chạy không (nó chạy nền, cổng ${ZALO_CONG}).</li>
+        <li>Vào <a href="http://127.0.0.1:${ZALO_CONG}" target="_blank">http://127.0.0.1:${ZALO_CONG}</a>
+            bấm <b>↻ Phân tích</b> một lần để có dữ liệu.</li>
+        <li>Quay lại đây bấm <b>↻ Cập nhật</b>.</li>
+      </ol>`}
+
+    <p style="color:var(--text-secondary);font-size:13px;margin-top:14px">
+      💡 Cách gọn nhất cho mọi thiết bị: mở app tại
+      <code>http://&lt;IP-máy-anh&gt;:${ZALO_CONG}/manager</code> thay vì link web —
+      lúc đó tab Zalo chạy thẳng, các tab khác vẫn bình thường.</p>
   </div>`;
 }
 
@@ -2090,10 +2124,17 @@ function renderZaloHuongDan() {
         đúng 2 tên miền của app). Chrome cần thêm Access-Control-Allow-Private-Network — đã bật.
      3) Không thấy server → hướng dẫn bật, không báo lỗi đỏ. */
 const ZALO_CONG = 8770;
+function zaloMay() { return (load("fp_zalo_may") || "").trim(); }
+function zaloDiaChiApp() { const m = zaloMay(); return m ? `http://${m}:${ZALO_CONG}/manager` : ""; }
 function zaloNguon() {
-  // Mở ngay từ server Zalo (localhost hoặc IP nội bộ trong cùng Wi-Fi)
+  // Đang mở NGAY TỪ server Zalo (localhost hoặc IP nội bộ) → gọi cùng nguồn, luôn chạy
   if (location.port === String(ZALO_CONG)) return ["/api/report"];
-  return [`http://127.0.0.1:${ZALO_CONG}/api/report`, `http://localhost:${ZALO_CONG}/api/report`];
+  const ds = [`http://127.0.0.1:${ZALO_CONG}/api/report`, `http://localhost:${ZALO_CONG}/api/report`];
+  // Máy khác (điện thoại): chỉ gọi được khi trang này cũng là http — trang https bị
+  // trình duyệt chặn gọi sang địa chỉ http trong mạng nội bộ (mixed content).
+  const may = zaloMay();
+  if (may && location.protocol === "http:") ds.push(`http://${may}:${ZALO_CONG}/api/report`);
+  return ds;
 }
 async function loadZalo(force = false) {
   if (state.zaloLoading) return;
