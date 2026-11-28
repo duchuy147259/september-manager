@@ -400,6 +400,7 @@ function catOf(key) { return CATEGORIES.find(c => c.key === key) || CATEGORIES[C
    thật là token: máy nhân viên dùng token riêng không có quyền ads. */
 {
   const qs = new URLSearchParams(location.search);
+  if (qs.get("threads") === "1") window.__CHI_THREADS = true;
   if (qs.get("staff") === "1") localStorage.setItem("fp_role", JSON.stringify("staff"));
   if (qs.get("staff") === "0") localStorage.removeItem("fp_role");
 }
@@ -423,6 +424,7 @@ let state = {
   zaloData: null, zaloLoading: false, zaloError: null, zaloFetchedAt: null,
   thData: null, thTrangThai: null, thLoading: false, thError: null, thFetchedAt: null,
   thPham: "_gop", thLoaiLoc: "tat_ca", thThang: "", thDangBo: false,
+  chiThreads: false, bcSlug: "", bcNgay: "", bcLuu: null,
   zaloSort: "cho",
   sortBy: "time",
   error: null,
@@ -1076,6 +1078,13 @@ function exportCSV() {
 /* ---------- Render ---------- */
 function render() {
   const app = document.getElementById("app");
+  // Chế độ chỉ Threads: dùng được khi CHƯA có token Facebook. Vào bằng nút
+  // "Chỉ dùng Threads" ở màn hình kết nối, hoặc mở thẳng /manager?threads=1
+  if (state.chiThreads && !state.page) {
+    app.innerHTML = renderThreadsRieng();
+    bindHeaderThreadsRieng(); bindThreads(); applyMotion();
+    return;
+  }
   if (!state.page || state.view === "setup") { app.innerHTML = renderSetup(); bindSetup(); return; }
   let body;
   if (state.tab === "ads") {
@@ -1225,6 +1234,11 @@ function renderSetup() {
       <button class="primary" id="connectBtn">Kết nối</button>
     </div>
     ${load(LS.userToken) ? `<div style="margin-top:10px;"><button id="savedTokenBtn">🔑 Dùng token đã lưu lần trước</button></div>` : ""}
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <p style="color:var(--text-secondary);margin-bottom:8px;font-size:13.5px">
+        Chưa có token Facebook? Phần Threads chạy độc lập, không cần token Facebook:</p>
+      <button id="chiThreadsBtn">🧵 Chỉ dùng Threads</button>
+    </div>
     <details style="margin-top:14px;color:var(--text-secondary);">
       <summary style="cursor:pointer;font-weight:600;color:var(--text-primary);">💡 Token hết hạn nhanh? Cách lấy token dùng lâu dài</summary>
       <div style="margin-top:8px;font-size:13px;line-height:1.6;">
@@ -1251,6 +1265,12 @@ function renderSetup() {
   </div>`;
 }
 function bindSetup() {
+  const th = document.getElementById("chiThreadsBtn");
+  if (th) th.onclick = () => {
+    AM.choi("tab", 5);
+    state.chiThreads = true; state.tab = "threads";
+    if (!state.thData && !state.thLoading) loadThreads(true); else render();
+  };
   const btn = document.getElementById("connectBtn");
   if (btn) btn.onclick = () => {
     const t = document.getElementById("tokenInput").value.trim();
@@ -1934,6 +1954,154 @@ function renderInboxTab() {
   <p class="updated">Tính từ 25 tin gần nhất của mỗi hội thoại, ${d.scanned} hội thoại gần nhất. Facebook API không cho biết nhân viên nào trả lời — thời gian phản hồi là số chung của page. Cập nhật ${new Date(d.fetchedAt).toLocaleString("vi-VN")}.</p>`;
 }
 
+/* ── Khung riêng cho chế độ chỉ Threads (không cần token Facebook) ── */
+function renderThreadsRieng() {
+  return `
+  <header>
+    <div class="pageinfo">
+      <h1>🧵 Threads — September Manager</h1>
+      <div class="sub">Chạy độc lập, không cần token Facebook · dữ liệu chỉ nằm trên máy này</div>
+    </div>
+    <div class="toolbar">
+      <button id="thLamMoi">↻ Cập nhật</button>
+      <button id="thThoat">Về màn hình kết nối Facebook</button>
+    </div>
+  </header>
+  <div class="main">${renderThreadsTab()}</div>`;
+}
+function bindHeaderThreadsRieng() {
+  const q = id => document.getElementById(id);
+  if (q("thLamMoi")) q("thLamMoi").onclick = () => { AM.choi("batDauTai"); loadThreads(true); };
+  if (q("thThoat")) q("thThoat").onclick = () => {
+    AM.choi("ngat"); state.chiThreads = false; state.view = "setup"; render();
+  };
+}
+
+/* ── Hộp báo cáo nhập tay ──
+   Dùng khi chưa cấp quyền API Threads: mở Threads Insights, chép số rồi dán vào đây.
+   Lưu theo tài khoản + ngày quan sát (giờ VN); lưu lại cùng ngày là cập nhật. */
+function bcHoSoHienTai(hs) {
+  const co = hs.filter(h => h.handle);
+  if (!state.bcSlug || !co.some(h => h.slug === state.bcSlug)) {
+    state.bcSlug = (co[0] || {}).slug || "";
+  }
+  return state.bcSlug;
+}
+function bcHomNayVN() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+}
+function renderBaoCaoTay(d) {
+  const hs = (d.ho_so || []).filter(h => h.handle);
+  if (!hs.length) {
+    return `<div class="card"><h2>📝 Báo cáo nhập tay</h2>
+      <div class="empty">Lưu URL một hồ sơ Threads ở trên trước đã, rồi mới nhập báo cáo được.</div></div>`;
+  }
+  const slug = bcHoSoHienTai(hs);
+  const ds = (d.bao_cao || {})[slug] || [];
+  const ngay = state.bcNgay || bcHomNayVN();
+  const dangSua = ds.find(x => x.ngay_quan_sat === ngay);
+  const moiNhat = ds[0];
+
+  return `<div class="card">
+    <h2>📝 Báo cáo nhập tay <span class="hint">— dùng khi chưa cấp quyền API, số liệu chép tay từ Threads Insights</span></h2>
+
+    <div class="toolbar" style="flex-wrap:wrap;margin:10px 0">
+      <span style="color:var(--text-secondary)">Tài khoản:</span>
+      ${hs.map(h => `<button class="zsort ${slug === h.slug ? "active" : ""}" data-bcslug="${esc(h.slug)}">@${esc(h.handle)}</button>`).join("")}
+      <span style="color:var(--text-secondary);margin-left:8px">Ngày quan sát (giờ VN):</span>
+      <input type="date" id="bcNgay" value="${esc(ngay)}" max="${bcHomNayVN()}">
+      ${dangSua ? `<span class="badge" style="color:var(--series-2)">Đã có báo cáo ngày này — lưu sẽ cập nhật (đã sửa ${dangSua.so_lan_sua} lần)</span>` : ""}
+    </div>
+
+    <input id="bcTieuDe" placeholder="Tiêu đề ngắn (không bắt buộc)" style="width:100%;margin-bottom:8px"
+      value="${esc(dangSua ? (dangSua.tieu_de || "") : "")}">
+    <textarea id="bcNoiDung" rows="12" placeholder="Dán báo cáo vào đây…"
+      style="width:100%;font:13.5px/1.6 ui-monospace,Menlo,monospace;padding:10px;border-radius:12px;
+             border:1px solid var(--border);background:var(--bg);color:var(--text-primary);resize:vertical">${esc(dangSua ? dangSua.noi_dung : "")}</textarea>
+
+    <div class="toolbar" style="margin-top:10px;flex-wrap:wrap">
+      <button class="primary" id="bcLuu">💾 Lưu báo cáo</button>
+      <button id="bcHomNay">Hôm nay</button>
+      ${dangSua ? `<button id="bcXoa">Xoá báo cáo ngày này</button>` : ""}
+      ${state.bcLuu ? `<span class="badge" style="color:${state.bcLuu.loi ? "var(--critical)" : "var(--series-3)"}">${esc(state.bcLuu.tin)}</span>` : ""}
+    </div>
+
+    ${moiNhat ? `
+      <h2 style="margin-top:20px">Báo cáo mới nhất <span class="hint">— ${thNhanNgay(moiNhat.ngay_quan_sat)}</span></h2>
+      ${renderMotBaoCao(moiNhat)}` : ""}
+
+    ${ds.length > 1 ? `
+      <h2 style="margin-top:18px">Lịch sử (${ds.length} báo cáo)</h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Ngày quan sát</th><th>Tiêu đề</th><th class="num">Link</th><th>Nguồn</th><th>Lưu lúc</th><th></th></tr></thead>
+        <tbody>${ds.map(x => `<tr>
+          <td><a href="#" class="bc-mo" data-ngay="${esc(x.ngay_quan_sat)}">${thNhanNgay(x.ngay_quan_sat)}</a></td>
+          <td>${esc(x.tieu_de || "—")}</td>
+          <td class="num">${(x.lien_ket || []).length}</td>
+          <td><span class="badge">nhập tay</span></td>
+          <td style="color:var(--text-secondary);font-size:12.5px">${thNgay(x.cap_nhat_luc)}${
+            x.so_lan_sua ? ` · sửa ${x.so_lan_sua} lần` : ""}</td>
+          <td><a href="#" class="bc-mo" data-ngay="${esc(x.ngay_quan_sat)}">Mở</a></td>
+        </tr>`).join("")}</tbody>
+      </table></div>` : ""}
+  </div>`;
+}
+function thNhanNgay(k) {
+  if (!k) return "—";
+  const [y, m, d] = k.split("-");
+  return `${d}/${m}/${y}`;
+}
+function renderMotBaoCao(x) {
+  return `<div class="th-bai" style="display:block">
+    <div class="th-dau">
+      <span class="badge" style="color:var(--accent)">Nguồn: nhập tay</span>
+      <span class="badge">Quan sát ${thNhanNgay(x.ngay_quan_sat)}</span>
+      ${x.tieu_de ? `<span class="badge">${esc(x.tieu_de)}</span>` : ""}
+      <span style="color:var(--text-secondary);font-size:12.5px">lưu ${thNgay(x.cap_nhat_luc)}${
+        x.so_lan_sua ? ` · đã sửa ${x.so_lan_sua} lần` : ""}</span>
+    </div>
+    <div class="th-text" style="margin-top:8px">${esc(x.noi_dung)}</div>
+    ${(x.lien_ket || []).length ? `<div class="th-cs" style="flex-direction:column;align-items:flex-start">
+      ${x.lien_ket.map(u => `<a class="th-chip" href="${esc(u)}" target="_blank" rel="noopener">🔗 ${esc(u)}</a>`).join("")}
+    </div>` : ""}
+  </div>`;
+}
+function bindBaoCao() {
+  const q = id => document.getElementById(id);
+  document.querySelectorAll("[data-bcslug]").forEach(el => el.onclick = () => {
+    AM.choi("click"); state.bcSlug = el.dataset.bcslug; state.bcLuu = null; render();
+  });
+  document.querySelectorAll(".bc-mo").forEach(el => el.onclick = (e) => {
+    e.preventDefault(); AM.choi("click"); state.bcNgay = el.dataset.ngay; state.bcLuu = null; render();
+  });
+  if (q("bcNgay")) q("bcNgay").onchange = () => { state.bcNgay = q("bcNgay").value; state.bcLuu = null; render(); };
+  if (q("bcHomNay")) q("bcHomNay").onclick = () => { state.bcNgay = bcHomNayVN(); state.bcLuu = null; render(); };
+  if (q("bcLuu")) q("bcLuu").onclick = async () => {
+    const noi_dung = q("bcNoiDung").value;
+    if (!noi_dung.trim()) { state.bcLuu = { loi: true, tin: "Nội dung đang trống" }; AM.choi("loi"); render(); return; }
+    AM.choi("batDauTai");
+    try {
+      const j = await thGoi("/api/threads/bao-cao", "POST", {
+        slug: state.bcSlug, ngay_quan_sat: q("bcNgay").value,
+        tieu_de: q("bcTieuDe").value, noi_dung,
+      });
+      if (j.loi) { state.bcLuu = { loi: true, tin: j.loi }; AM.choi("loi"); render(); return; }
+      state.bcLuu = { loi: false, tin: j.moi ? "✓ Đã lưu báo cáo mới" : `✓ Đã cập nhật báo cáo ngày này (lần sửa ${j.ban_ghi.so_lan_sua})` };
+      AM.choi("xongVui");
+      await loadThreads(true);
+    } catch (e) { state.bcLuu = { loi: true, tin: e.message }; AM.choi("loi"); render(); }
+  };
+  if (q("bcXoa")) q("bcXoa").onclick = async () => {
+    AM.choi("ngat");
+    try {
+      await thGoi("/api/threads/bao-cao-xoa", "POST", { slug: state.bcSlug, ngay_quan_sat: q("bcNgay").value });
+      state.bcLuu = { loi: false, tin: "Đã xoá báo cáo ngày này" };
+      await loadThreads(true);
+    } catch (e) { state.bcLuu = { loi: true, tin: e.message }; render(); }
+  };
+}
+
 /* ══════════════════ Tab Threads ══════════════════
    Dữ liệu lấy từ Threads Graph API chính thức. Token KHÔNG nằm trong trình duyệt —
    backend (server.py + backend/threads_backend.py) giữ token và chỉ trả về bài đã lấy.
@@ -2036,6 +2204,7 @@ function renderThreadsTab() {
   const chuaKetNoi = (tt.ho_so || []).every(h => !h.da_ket_noi);
 
   return renderThreadsHoSo(tt, hs)
+    + renderBaoCaoTay(d)
     + (chuaKetNoi ? renderThreadsHuongDan(tt) : "")
     + renderThreadsPhamVi(tt)
     + renderThreadsThang(d, hs)
@@ -2224,6 +2393,7 @@ function renderThreadsLoi() {
 }
 
 function bindThreads() {
+  bindBaoCao();
   const q = (sel, fn) => document.querySelectorAll(sel).forEach(fn);
   q("[data-thpham]", el => el.onclick = () => { AM.choi("click"); state.thPham = el.dataset.thpham; render(); });
   q("[data-thloai]", el => el.onclick = () => { AM.choi("click"); state.thLoaiLoc = el.dataset.thloai; render(); });
@@ -2661,7 +2831,9 @@ function bindAds() {
 /* ---------- Init ---------- */
 // Backfill mốc thời gian token cho phiên đã kết nối trước khi có tính năng này
 if (load(LS.userToken) && !load(LS.tokenAt)) save(LS.tokenAt, Date.now());
-if (state.page) { loadDashboard(); ensurePagesList(); }
+if (window.__CHI_THREADS) { state.chiThreads = true; state.tab = "threads"; }
+if (state.chiThreads && !state.page) { loadThreads(true); }
+else if (state.page) { loadDashboard(); ensurePagesList(); }
 else { state.view = "setup"; render(); }
 </script>
 </body>
