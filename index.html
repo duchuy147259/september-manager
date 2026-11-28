@@ -1960,14 +1960,22 @@ function thGoc() {
   return `http://127.0.0.1:${ZALO_CONG}`;
 }
 async function thGoi(duong, phuong_thuc = "GET", than) {
+  // Khoá cục bộ do backend nhúng vào trang /manager. Mở app từ nơi khác (GitHub
+  // Pages) thì không có khoá → backend từ chối, đúng như thiết kế.
+  const khoa = window.__THREADS_KHOA;
+  const headers = {};
+  if (khoa) headers["X-Khoa-App"] = khoa;
+  if (than) headers["Content-Type"] = "application/json";
   const res = await fetch(thGoc() + duong, {
-    method: phuong_thuc,
-    cache: "no-store",
-    headers: than ? { "Content-Type": "application/json" } : undefined,
+    method: phuong_thuc, cache: "no-store",
+    headers: Object.keys(headers).length ? headers : undefined,
     body: than ? JSON.stringify(than) : undefined,
   });
+  let j = null;
+  try { j = await res.json(); } catch (e) { /* không phải JSON */ }
+  if (res.status === 401) throw new Error((j && j.loi) || "Không có quyền đọc dữ liệu Threads");
   if (!res.ok) throw new Error("HTTP " + res.status);
-  return res.json();
+  return j;
 }
 async function loadThreads(force = false) {
   if (state.thLoading) return;
@@ -2121,21 +2129,25 @@ function renderThreadsThang(d, hs) {
       <tbody>${thang.map(k => {
         const c = lay(k, pham) || {};
         return `<tr ${k === state.thThang ? 'style="background:var(--kem,rgba(194,89,58,.07))"' : ""}>
-          <td><a href="#" class="th-chonthang" data-k="${k}">${thNhanThang(k)}</a>${
-            c.thieu_chi_so ? `<sup class="th-na" title="${c.thieu_chi_so}/${c.tong} bài chưa có chỉ số — các con số bên phải chỉ cộng ${c.co_chi_so} bài có số">*</sup>` : ""}</td>
+          <td><a href="#" class="th-chonthang" data-k="${k}">${thNhanThang(k)}</a></td>
           ${hs.map(h => `<td class="num">${fmtNum((lay(k, h.slug) || {}).tong || 0)}</td>`).join("")}
           <td class="num"><b>${fmtNum((lay(k, "_gop") || {}).tong || 0)}</b></td>
           <td class="num">${fmtNum(c.bai || 0)}</td>
           <td class="num">${fmtNum(c.tra_loi || 0)}</td>
           <td class="num">${fmtNum(c.dang_lai || 0)}</td>
           <td class="num">${fmtNum(c.trich_dan || 0)}</td>
-          ${TH_METRIC.map(([m]) => `<td class="num">${
-            c.co_chi_so ? fmtNum(c[m] || 0) : thSo(null)}</td>`).join("")}
+          ${TH_METRIC.map(([m, , ten]) => {
+            const x = (c.chi_so || {})[m] || { tong: 0, co: 0, thieu: 0 };
+            if (!x.co) return `<td class="num"><span class="th-na" title="${ten}: không bài nào trong tháng có số liệu">—</span></td>`;
+            return `<td class="num">${fmtNum(x.tong)}${x.thieu
+              ? `<sup class="th-na" title="${ten}: tổng một phần — đã cộng ${x.co} bài, còn ${x.thieu} bài chưa biết số nên không cộng thành 0">*</sup>`
+              : ""}</td>`;
+          }).join("")}
         </tr>`;
       }).join("")}</tbody>
     </table></div>
-    <p class="updated">Dấu <b>*</b> cạnh tháng = còn bài chưa có chỉ số, tổng bên phải chỉ cộng các bài đã có số.
-      Ô “—” = cả tháng chưa bài nào có chỉ số. Số 0 là giá trị thật do API trả về.</p>
+    <p class="updated">Mỗi chỉ số cộng riêng: <b>*</b> = tổng một phần (còn bài chưa biết số — không cộng thành 0),
+      “—” = không bài nào trong tháng có chỉ số đó, <b>0</b> = giá trị thật API trả về. Di chuột vào ô để xem đã cộng mấy bài.</p>
   </div>`;
 }
 
