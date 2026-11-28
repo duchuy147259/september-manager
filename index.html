@@ -100,6 +100,23 @@
 
   /* ---------- Header ---------- */
   header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+  .th-hoso input { font-size: 13.5px; }
+  .th-ds { display: flex; flex-direction: column; gap: 12px; }
+  .th-bai { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--border);
+    border-radius: 14px; background: var(--card); }
+  .th-anh { width: 72px; height: 72px; object-fit: cover; border-radius: 10px; flex: none;
+    border: 1px solid var(--border); }
+  .th-anh-trong { display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); font-weight: 700; background: var(--bg); }
+  .th-than { flex: 1; min-width: 0; }
+  .th-dau { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+  .th-text { white-space: pre-wrap; word-break: break-word; font-size: 14px; line-height: 1.55; }
+  .th-cs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .th-chip { font-size: 12.5px; padding: 3px 9px; border-radius: 999px;
+    background: var(--bg); border: 1px solid var(--border); white-space: nowrap; }
+  .th-chip-mo { color: var(--text-secondary); }
+  .th-na { color: var(--text-secondary); cursor: help; }
+  @media (max-width: 560px) { .th-anh { width: 54px; height: 54px; } }
   .btn-link { display:inline-block; padding:7px 14px; border-radius:999px;
     background: var(--accent); color:#fff; text-decoration:none; font-size:13.5px; font-weight:600; }
   .zsort { padding: 5px 11px; font-size: 12.5px; border-radius: 999px; }
@@ -404,6 +421,8 @@ let state = {
   trendData: null, trendLoading: false, trendError: null, trendMode: "month",
   inboxData: null, inboxLoading: false, inboxError: null, inboxMonth: null,
   zaloData: null, zaloLoading: false, zaloError: null, zaloFetchedAt: null,
+  thData: null, thTrangThai: null, thLoading: false, thError: null, thFetchedAt: null,
+  thPham: "_gop", thLoaiLoc: "tat_ca", thThang: "", thDangBo: false,
   zaloSort: "cho",
   sortBy: "time",
   error: null,
@@ -975,7 +994,7 @@ async function loadDashboard(force = false) {
   render();
 }
 function changeMonth(n) {
-  if (state.tab === "trend" || state.tab === "zalo") return; // 2 tab này không theo tháng
+  if (["trend", "zalo", "threads"].includes(state.tab)) return; // các tab này không theo tháng
   const next = addMonths(state.month, n);
   if (next > startOfMonth(new Date())) return;
   state.month = next;
@@ -985,7 +1004,7 @@ function changeMonth(n) {
 }
 function setTab(t) {
   if (state.tab === t) return;
-  AM.choi("tab", ["page", "ads", "inbox", "trend", "zalo"].indexOf(t));
+  AM.choi("tab", ["page", "ads", "inbox", "trend", "zalo", "threads"].indexOf(t));
   state.tab = t;
   if (t === "ads") {
     if (isStaff()) { render(); return; }
@@ -996,6 +1015,8 @@ function setTab(t) {
     if (!state.trendData && !state.trendLoading) { loadTrends(); return; }
   } else if (t === "zalo") {
     if (!state.zaloData && !state.zaloLoading) { loadZalo(); return; }
+  } else if (t === "threads") {
+    if (!state.thData && !state.thLoading) { loadThreads(); return; }
   } else {
     if (state.page && state.dataMonth !== ymKey(state.month)) { loadDashboard(); return; }
   }
@@ -1061,6 +1082,8 @@ function render() {
     body = renderAdsTab();
   } else if (state.tab === "inbox") {
     body = renderInboxTab();
+  } else if (state.tab === "threads") {
+    body = renderThreadsTab();
   } else if (state.tab === "zalo") {
     body = renderZaloTab();
   } else if (state.tab === "trend") {
@@ -1076,6 +1099,7 @@ function render() {
   bindHeader(); bindTabs(); bindSidebar();
   if (state.tab === "ads") bindAds();
   else if (state.tab === "zalo") bindZalo();
+  else if (state.tab === "threads") bindThreads();
   else if (state.tab === "trend") bindTrends();
   else if (state.view === "dashboard" && !state.error) { bindDashboard(); bindKpi(); }
   applyMotion();
@@ -1173,6 +1197,7 @@ function renderTabs() {
     <button class="${state.tab === "inbox" ? "active" : ""}" data-tab="inbox">💬 Tin nhắn</button>
     <button class="${state.tab === "trend" ? "active" : ""}" data-tab="trend">📈 Xu hướng</button>
     <button class="${state.tab === "zalo" ? "active" : ""}" data-tab="zalo">🟩 Zalo</button>
+    <button class="${state.tab === "threads" ? "active" : ""}" data-tab="threads">🧵 Threads</button>
   </div>`;
 }
 function bindTabs() {
@@ -1270,6 +1295,7 @@ function bindHeader() {
     return state.tab === "ads" ? loadAds(true)
       : state.tab === "inbox" ? loadInbox(true)
       : state.tab === "zalo" ? loadZalo(true)
+      : state.tab === "threads" ? loadThreads(true)
       : state.tab === "trend" ? loadTrends(true)
       : loadDashboard(true);
   };
@@ -1906,6 +1932,320 @@ function renderInboxTab() {
     </div>
   </div>
   <p class="updated">Tính từ 25 tin gần nhất của mỗi hội thoại, ${d.scanned} hội thoại gần nhất. Facebook API không cho biết nhân viên nào trả lời — thời gian phản hồi là số chung của page. Cập nhật ${new Date(d.fetchedAt).toLocaleString("vi-VN")}.</p>`;
+}
+
+/* ══════════════════ Tab Threads ══════════════════
+   Dữ liệu lấy từ Threads Graph API chính thức. Token KHÔNG nằm trong trình duyệt —
+   backend (server.py + backend/threads_backend.py) giữ token và chỉ trả về bài đã lấy.
+   Quy ước hiển thị chỉ số:  số = giá trị thật (kể cả 0)  ·  "—" = API không trả về. */
+const TH_METRIC = [
+  ["views",   "👁", "Lượt xem"],
+  ["likes",   "♥",  "Thích"],
+  ["replies", "💬", "Trả lời"],
+  ["reposts", "🔁", "Đăng lại"],
+  ["quotes",  "❝",  "Trích dẫn"],
+  ["shares",  "↗",  "Chia sẻ"],
+];
+const TH_LOAI = {
+  bai:       { ten: "Bài",       mau: "var(--series-1)" },
+  tra_loi:   { ten: "Trả lời",   mau: "var(--series-2)" },
+  dang_lai:  { ten: "Đăng lại",  mau: "var(--series-3)" },
+  trich_dan: { ten: "Trích dẫn", mau: "var(--series-4)" },
+};
+
+function thGoc() {
+  if (location.port === String(ZALO_CONG)) return "";
+  const may = zaloMay();
+  if (may && location.protocol === "http:") return `http://${may}:${ZALO_CONG}`;
+  return `http://127.0.0.1:${ZALO_CONG}`;
+}
+async function thGoi(duong, phuong_thuc = "GET", than) {
+  const res = await fetch(thGoc() + duong, {
+    method: phuong_thuc,
+    cache: "no-store",
+    headers: than ? { "Content-Type": "application/json" } : undefined,
+    body: than ? JSON.stringify(than) : undefined,
+  });
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  return res.json();
+}
+async function loadThreads(force = false) {
+  if (state.thLoading) return;
+  if (state.thData && !force && Date.now() - state.thFetchedAt < 2 * 60 * 1000) { render(); return; }
+  state.thLoading = true; state.thError = null; render();
+  try {
+    const [tt, dl] = await Promise.all([
+      thGoi("/api/threads/trang-thai"),
+      thGoi("/api/threads/du-lieu"),
+    ]);
+    state.thTrangThai = tt; state.thData = dl; state.thFetchedAt = Date.now();
+    const thang = Object.keys(dl.theo_thang || {});
+    if (!state.thThang || !thang.includes(state.thThang)) state.thThang = thang[0] || "";
+    AM.choi("xong");
+  } catch (e) {
+    state.thData = null; state.thError = e; AM.choi("loi");
+  }
+  state.thLoading = false; render();
+}
+
+/* mốc thời gian API (ISO, lệch +0000) → giờ Việt Nam */
+function thNgay(iso, dayDu = true) {
+  if (!iso) return "—";
+  const d = new Date(String(iso).replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
+  if (isNaN(d)) return "—";
+  return d.toLocaleString("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit",
+    year: dayDu ? "numeric" : undefined, hour: "2-digit", minute: "2-digit",
+  });
+}
+function thKhoaThang(iso) {
+  if (!iso) return "";
+  const d = new Date(String(iso).replace(/([+-]\d{2})(\d{2})$/, "$1:$2"));
+  if (isNaN(d)) return "";
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric", month: "2-digit" }).formatToParts(d)
+    .reduce((a, x) => (a[x.type] = x.value, a), {});
+  return `${p.year}-${p.month}`;
+}
+function thNhanThang(k) {
+  const [y, m] = (k || "").split("-");
+  return y ? `Tháng ${+m}/${y}` : "—";
+}
+/* số thật (kể cả 0) vs API không trả về */
+function thSo(v) {
+  return (v === null || v === undefined)
+    ? `<span class="th-na" title="Threads API không trả chỉ số này cho bài đó">—</span>`
+    : fmtNum(v);
+}
+
+function renderThreadsTab() {
+  if (state.thLoading) return `<div class="loading"><span class="spin"></span>Đang đọc dữ liệu Threads…</div>`;
+  if (state.thError || !state.thData) return renderThreadsLoi();
+
+  const d = state.thData, tt = state.thTrangThai || {};
+  const hs = d.ho_so || [];
+  const kho = d.kho || [];
+  const chuaKetNoi = (tt.ho_so || []).every(h => !h.da_ket_noi);
+
+  return renderThreadsHoSo(tt, hs)
+    + (chuaKetNoi ? renderThreadsHuongDan(tt) : "")
+    + renderThreadsPhamVi(tt)
+    + renderThreadsThang(d, hs)
+    + renderThreadsBai(d, kho, hs);
+}
+
+/* ── thẻ 2 hồ sơ công ty ── */
+function renderThreadsHoSo(tt, hs) {
+  const ds = tt.ho_so || hs;
+  return `<div class="cols">${ds.map((h, i) => {
+    const sv = (hs[i] || {});
+    return `<div class="card th-hoso">
+      <h2>${esc(h.nhan || "Hồ sơ " + (i + 1))}</h2>
+      <div class="toolbar" style="flex-wrap:wrap;margin:8px 0 12px">
+        <input class="th-url" data-i="${i}" value="${esc(h.url || "")}"
+          placeholder="https://www.threads.net/@tenhoso" style="min-width:260px;flex:1">
+        <button class="th-luu">Lưu</button>
+      </div>
+      <div class="toolbar" style="flex-wrap:wrap">
+        ${h.da_ket_noi
+          ? `<span class="badge" style="color:var(--series-3)">✓ Đã kết nối${h.username ? " @" + esc(h.username) : ""}</span>
+             <button class="th-dongbo" data-slug="${esc(h.slug)}" ${state.thDangBo ? "disabled" : ""}>
+               ${state.thDangBo ? "Đang đồng bộ…" : "↻ Đồng bộ bài"}</button>
+             <button class="th-ngat" data-slug="${esc(h.slug)}">Ngắt</button>`
+          : `<span class="badge" style="color:var(--text-secondary)">Chưa cấp quyền đọc</span>
+             <button class="th-ketnoi" data-slug="${esc(h.slug)}" ${h.url ? "" : "disabled"}>Kết nối quyền đọc</button>`}
+      </div>
+      <p class="updated" style="margin-top:10px">
+        ${h.dong_bo_luc ? `Đồng bộ lúc ${thNgay(h.dong_bo_luc)} · ${fmtNum(h.so_bai)} bài trong kho`
+                        : "Chưa đồng bộ lần nào."}
+        ${h.token_het_han_luc ? ` · token hết hạn ${new Date(h.token_het_han_luc * 1000).toLocaleDateString("vi-VN")}` : ""}
+      </p>
+    </div>`;
+  }).join("")}</div>`;
+}
+
+function renderThreadsHuongDan(tt) {
+  return `<div class="card">
+    <h2>Cần cấp quyền đọc một lần</h2>
+    <ol style="line-height:1.9;padding-left:20px">
+      <li>Dán URL hai hồ sơ Threads của công ty vào ô trên rồi bấm <b>Lưu</b>.</li>
+      <li>${tt.app_da_cau_hinh
+            ? `Bấm <b>Kết nối quyền đọc</b> — Threads hỏi xác nhận, xong là quay lại đây.`
+            : `Backend chưa có <code>app_id</code>/<code>app_secret</code> của Threads App.
+               Khai vào <code>backend/data/cau_hinh.json</code> rồi tải lại trang.`}</li>
+      <li>Bấm <b>↻ Đồng bộ bài</b> để kéo bài thật về.</li>
+    </ol>
+    <p style="color:var(--text-secondary);font-size:13px">
+      Quyền xin: <code>${esc(tt.quyen || "")}</code> — chỉ đọc, không có quyền đăng hay xoá bài.
+      Token do máy chủ giữ, không bao giờ gửi xuống trình duyệt.</p>
+  </div>`;
+}
+
+/* ── phạm vi dữ liệu: nói rõ chỗ nào thiếu ── */
+function renderThreadsPhamVi(tt) {
+  const canh = [];
+  for (const h of tt.ho_so || []) {
+    const p = h.pham_vi;
+    if (!p) continue;
+    if (!p.tra_loi_ho_tro) canh.push(`<b>${esc(h.nhan)}</b>: chưa đọc được phần trả lời (thiếu quyền <code>threads_read_replies</code>).`);
+    if (p.chi_so_bo_qua) canh.push(`<b>${esc(h.nhan)}</b>: còn ${p.chi_so_bo_qua} bài chưa lấy chỉ số (chạm trần mỗi lần đồng bộ) — bấm Đồng bộ thêm lần nữa.`);
+    for (const g of p.ghi_chu || []) canh.push(`<b>${esc(h.nhan)}</b>: ${esc(g)}`);
+  }
+  if (!canh.length) return "";
+  return `<div class="notice"><b>Phạm vi dữ liệu chưa đầy đủ:</b><ul style="margin:6px 0 0;padding-left:18px">
+    ${canh.map(c => `<li>${c}</li>`).join("")}</ul></div>`;
+}
+
+/* ── đếm theo tháng (giờ VN): từng hồ sơ + gộp ── */
+function renderThreadsThang(d, hs) {
+  const thang = Object.keys(d.theo_thang || {});
+  if (!thang.length) return `<div class="card"><div class="empty">Chưa có bài nào trong kho. Bấm <b>↻ Đồng bộ bài</b>.</div></div>`;
+  const pham = state.thPham;
+  const lay = (k, slug) => (d.theo_thang[k] || {})[slug] || null;
+
+  return `<div class="card">
+    <h2>Số bài theo tháng <span class="hint">— tính theo giờ Việt Nam (GMT+7)</span></h2>
+    <div class="toolbar" style="margin:10px 0">
+      <span style="color:var(--text-secondary)">Cột chi tiết theo:</span>
+      ${[...hs.map(h => [h.slug, h.nhan]), ["_gop", "Gộp cả hai"]].map(([k, v]) =>
+        `<button class="zsort ${pham === k ? "active" : ""}" data-thpham="${esc(k)}">${esc(v)}</button>`).join("")}
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr>
+        <th>Tháng</th>
+        ${hs.map(h => `<th class="num">${esc(h.nhan)}</th>`).join("")}
+        <th class="num">Gộp</th>
+        <th class="num">Bài</th><th class="num">Trả lời</th><th class="num">Đăng lại</th><th class="num">Trích dẫn</th>
+        ${TH_METRIC.map(([, ic, ten]) => `<th class="num" title="${ten}">${ic}</th>`).join("")}
+      </tr></thead>
+      <tbody>${thang.map(k => {
+        const c = lay(k, pham) || {};
+        return `<tr ${k === state.thThang ? 'style="background:var(--kem,rgba(194,89,58,.07))"' : ""}>
+          <td><a href="#" class="th-chonthang" data-k="${k}">${thNhanThang(k)}</a>${
+            c.thieu_chi_so ? `<sup class="th-na" title="${c.thieu_chi_so}/${c.tong} bài chưa có chỉ số — các con số bên phải chỉ cộng ${c.co_chi_so} bài có số">*</sup>` : ""}</td>
+          ${hs.map(h => `<td class="num">${fmtNum((lay(k, h.slug) || {}).tong || 0)}</td>`).join("")}
+          <td class="num"><b>${fmtNum((lay(k, "_gop") || {}).tong || 0)}</b></td>
+          <td class="num">${fmtNum(c.bai || 0)}</td>
+          <td class="num">${fmtNum(c.tra_loi || 0)}</td>
+          <td class="num">${fmtNum(c.dang_lai || 0)}</td>
+          <td class="num">${fmtNum(c.trich_dan || 0)}</td>
+          ${TH_METRIC.map(([m]) => `<td class="num">${
+            c.co_chi_so ? fmtNum(c[m] || 0) : thSo(null)}</td>`).join("")}
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div>
+    <p class="updated">Dấu <b>*</b> cạnh tháng = còn bài chưa có chỉ số, tổng bên phải chỉ cộng các bài đã có số.
+      Ô “—” = cả tháng chưa bài nào có chỉ số. Số 0 là giá trị thật do API trả về.</p>
+  </div>`;
+}
+
+/* ── danh sách bài ── */
+function renderThreadsBai(d, kho, hs) {
+  let bai = [];
+  for (const k of kho) {
+    for (const b of k.bai || []) bai.push({ ...b, _slug: k.slug, _nhan: k.nhan });
+  }
+  if (state.thThang) bai = bai.filter(b => thKhoaThang(b.timestamp) === state.thThang);
+  if (state.thPham !== "_gop") bai = bai.filter(b => b._slug === state.thPham);
+  if (state.thLoaiLoc !== "tat_ca") bai = bai.filter(b => b.loai === state.thLoaiLoc);
+  bai.sort((a, b) => String(b.timestamp || "").localeCompare(String(a.timestamp || "")));
+
+  const loc = [["tat_ca", "Tất cả"], ...Object.entries(TH_LOAI).map(([k, v]) => [k, v.ten])];
+  return `<div class="card">
+    <h2>Bài ${state.thThang ? thNhanThang(state.thThang) : ""} (${fmtNum(bai.length)})</h2>
+    <div class="toolbar" style="margin:10px 0;flex-wrap:wrap">
+      ${loc.map(([k, v]) => `<button class="zsort ${state.thLoaiLoc === k ? "active" : ""}" data-thloai="${k}">${v}</button>`).join("")}
+      <span style="flex:1"></span>
+      <span class="hint">số = giá trị thật (kể cả 0) · “—” = API không trả chỉ số</span>
+    </div>
+    ${bai.length ? `<div class="th-ds">${bai.map(b => renderThreadsMotBai(b, hs)).join("")}</div>`
+                 : `<div class="empty">Không có bài nào khớp bộ lọc.</div>`}
+  </div>`;
+}
+
+function renderThreadsMotBai(b, hs) {
+  const L = TH_LOAI[b.loai] || { ten: b.loai, mau: "var(--muted)" };
+  const anh = b.media_type === "VIDEO" ? (b.thumbnail_url || b.media_url)
+            : (b.media_type === "IMAGE" || b.media_type === "CAROUSEL_ALBUM") ? b.media_url
+            : b.gif_url || null;
+  const tt = b.chi_so_trang_thai;
+  const ghiChu = tt === "khong_ho_tro" ? "Threads không cấp chỉ số cho bài đăng lại"
+               : tt === "chua_lay" ? "Chưa lấy chỉ số — đồng bộ lại để bổ sung"
+               : tt === "trong" ? "API trả về rỗng cho bài này"
+               : tt === "loi" ? "Lấy chỉ số lỗi" : "";
+  return `<div class="th-bai">
+    ${anh ? `<img class="th-anh" src="${esc(anh)}" alt="${esc(b.alt_text || "")}" loading="lazy"
+              onerror="this.style.display='none'">`
+          : `<div class="th-anh th-anh-trong">${b.media_type === "TEXT_POST" ? "T" : "—"}</div>`}
+    <div class="th-than">
+      <div class="th-dau">
+        <span class="badge" style="color:${L.mau}">${L.ten}</span>
+        ${hs.length > 1 ? `<span class="badge">${esc(b._nhan || "")}</span>` : ""}
+        ${b.topic_tag ? `<span class="badge" style="color:var(--accent)" title="Thẻ chủ đề gốc của Threads">#${esc(b.topic_tag)}</span>` : ""}
+        <span class="badge" title="Chủ đề nội dung do app suy ra từ nội dung tiếng Việt">${esc(b.chu_de || "—")}</span>
+        ${b.media_type && b.media_type !== "TEXT_POST" ? `<span class="badge">${esc(b.media_type)}${b.so_con ? " ×" + b.so_con : ""}</span>` : ""}
+        <span style="color:var(--text-secondary);font-size:12.5px">${thNgay(b.timestamp)}</span>
+        ${b.permalink ? `<a href="${esc(b.permalink)}" target="_blank" rel="noopener">Mở trên Threads ↗</a>`
+                      : `<span class="hint">không có permalink</span>`}
+      </div>
+      <div class="th-text">${b.text ? esc(b.text) : `<i style="color:var(--text-secondary)">(bài không có chữ)</i>`}</div>
+      ${b.link_attachment_url ? `<div class="hint">🔗 ${esc(b.link_attachment_url)}</div>` : ""}
+      <div class="th-cs">
+        ${TH_METRIC.map(([m, ic, ten]) =>
+          `<span class="th-chip" title="${ten}">${ic} ${thSo((b.chi_so || {})[m])}</span>`).join("")}
+        ${ghiChu ? `<span class="th-chip th-chip-mo" title="${esc(ghiChu)}">ⓘ ${esc(ghiChu)}</span>` : ""}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderThreadsLoi() {
+  const tuMay = location.port === String(ZALO_CONG);
+  return `<div class="card">
+    <h2>🧵 Chưa đọc được dữ liệu Threads</h2>
+    <p style="color:var(--text-secondary);margin:8px 0 12px">
+      Tab này đọc từ backend chạy trên máy (cổng ${ZALO_CONG}) — token Threads nằm ở đó, không nằm trong trình duyệt.</p>
+    <div class="notice">${esc((state.thError && state.thError.message) || "Không kết nối được backend")}</div>
+    ${tuMay ? `<p>Thử bấm <b>↻ Cập nhật</b>. Nếu vẫn lỗi, kiểm tra server còn chạy không.</p>`
+            : `<p>Mở app tại <code>http://&lt;IP-máy&gt;:${ZALO_CONG}/manager</code> rồi vào lại tab này.</p>`}
+  </div>`;
+}
+
+function bindThreads() {
+  const q = (sel, fn) => document.querySelectorAll(sel).forEach(fn);
+  q("[data-thpham]", el => el.onclick = () => { AM.choi("click"); state.thPham = el.dataset.thpham; render(); });
+  q("[data-thloai]", el => el.onclick = () => { AM.choi("click"); state.thLoaiLoc = el.dataset.thloai; render(); });
+  q(".th-chonthang", el => el.onclick = (e) => { e.preventDefault(); AM.choi("tab", 0); state.thThang = el.dataset.k; render(); });
+
+  q(".th-luu", el => el.onclick = async () => {
+    const ds = [...document.querySelectorAll(".th-url")].map(i => ({ url: i.value }));
+    AM.choi("batDauTai");
+    try { await thGoi("/api/threads/ho-so", "POST", { ho_so: ds }); AM.choi("ketNoi"); loadThreads(true); }
+    catch (e) { state.thError = e; AM.choi("loi"); render(); }
+  });
+  q(".th-ketnoi", el => el.onclick = async () => {
+    AM.choi("batDauTai");
+    try {
+      const j = await thGoi("/api/threads/ket-noi?ho_so=" + encodeURIComponent(el.dataset.slug));
+      if (j.loi) { state.thError = new Error(j.loi); AM.choi("loi"); render(); return; }
+      window.open(j.url, "_blank", "noopener");
+    } catch (e) { state.thError = e; AM.choi("loi"); render(); }
+  });
+  q(".th-dongbo", el => el.onclick = async () => {
+    state.thDangBo = true; AM.choi("batDauTai"); render();
+    try {
+      const j = await thGoi("/api/threads/dong-bo", "POST", { slug: el.dataset.slug });
+      const loi = (j.ket_qua || []).find(r => r.loi);
+      state.thDangBo = false;
+      if (loi) { state.thError = new Error(loi.loi); AM.choi("loi"); render(); return; }
+      state.thError = null; await loadThreads(true);
+    } catch (e) { state.thDangBo = false; state.thError = e; AM.choi("loi"); render(); }
+  });
+  q(".th-ngat", el => el.onclick = async () => {
+    AM.choi("ngat");
+    try { await thGoi("/api/threads/ngat", "POST", { slug: el.dataset.slug }); loadThreads(true); }
+    catch (e) { state.thError = e; render(); }
+  });
 }
 
 /* ---------- Tab Zalo ---------- */
